@@ -74,9 +74,52 @@ How the pieces fit together is described in [docs/architecture.md](docs/architec
 
 ## Simulated results
 
-<!-- results:begin -->
-Generate the report with `python -m benchmarks.run_report`; it is written to `reports/v0.1/`.
-<!-- results:end -->
+Full report: [reports/v0.1/report.md](reports/v0.1/report.md) (machine-readable:
+[results.json](reports/v0.1/results.json)). Workload: Qwen3-30B-A3B shapes at 4.5 bits per weight
+(16.0 GiB), 16 measured tokens after 8 warm-up tokens at context 2048, synthetic
+routing, and a 12 GiB GPU that holds about 70% of the experts.
+
+| Configuration | tokens/s | ms/token | link MB/token | tokens/J |
+|---|---|---|---|---|
+| GPU-only (demand paging) | 126.7 | 7.89 | 80.3 | 1.38 |
+| CPU-only | 7.8 | 128.82 | 0.0 | 0.03 |
+| Static CPU/GPU layer split | 21.7 | 46.13 | 0.3 | 0.10 |
+| Adaptive CPU/GPU | 145.3 | 6.88 | 60.5 | 1.20 |
+| Distributed memory compute | 85.7 | 11.66 | 5.2 | 0.60 |
+| Predictive dataflow | 145.2 | 6.89 | 60.9 | 1.20 |
+| Compression-aware dataflow | 131.4 | 7.61 | 73.5 | 1.42 |
+| Complete BASP | 165.0 | 6.05 | 37.6 | 1.11 |
+
+What the simulation says under these assumptions:
+
+* **Deciding per expert beats splitting by layer.** Caching hot experts on the GPU and scheduling
+  each expert individually is 6.7x faster than offloading whole layers.
+* **Near-memory execution removes weight traffic.** The distributed configuration moves
+  5.2 MB per token against 80 MB for GPU demand paging.
+* **The combined dataflow is 1.14x the adaptive CPU/GPU baseline at 12 GiB, not 2x**, and
+  the gain depends on how much of the model the GPU holds: 1.60x at 6 GiB, 1.40x at 8 GiB,
+  and 0.93x at 24 GiB, where the whole model fits on the GPU.
+* **With 8 concurrent sequences** the combined dataflow reaches
+  1.44x the baseline's aggregate throughput (more distinct experts per layer, which the modules
+  execute in parallel).
+* **Module scaling is 47% efficient from one to four modules**, below the 70% target. The serial
+  trunk on the GPU and uneven per-token expert load are the likely limits; they have not been
+  isolated yet.
+* **Fixed overheads matter.** Scaling every link latency and kernel start-up time by 16x takes
+  the combined configuration from 165 to 43 tokens/s.
+* **Energy per token is worse, not better** (0.92x the baseline's tokens per joule): four idle
+  modules cost more static power than the faster decode saves, under the assumed power figures.
+* **Prefetching helps only when routing has structure beyond recency.** On constructed cyclic
+  routing it cuts stall time by 30%; on the default trace it changes nothing measurable for
+  Qwen3 because a reactive cache already holds what recency predicts.
+* **Lossless entropy coding saves about 8% of weight traffic** under the Gaussian-weight
+  estimate, and only where the destination decodes faster than the link.
+
+Against the acceptance targets of the specification, on this profile the simulation meets the
+memory-utilisation target, meets the 50% traffic-reduction target against GPU demand paging
+(53%) but not against the adaptive baseline (38%), and misses the 2x throughput, 2x energy
+and 70% scaling targets. Scheduler overhead cannot be judged from a Python prototype. These are
+statements about the assumed hardware and workload; measurements must replace them.
 
 ## Repository layout
 

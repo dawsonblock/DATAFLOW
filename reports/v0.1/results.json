@@ -1,0 +1,636 @@
+{
+  "configurations": {
+    "adaptive": {
+      "batch": 1,
+      "cache_hit_rate": 0.9278971354166666,
+      "devices": {
+        "gpu": {
+          "busy_fraction": 0.761130867960499,
+          "kernels": 7572,
+          "mem_utilisation_busy": 0.7460561601575816
+        },
+        "host": {
+          "busy_fraction": 0.17772971065717408,
+          "kernels": 124,
+          "mem_utilisation_busy": 1.2273329227962162
+        }
+      },
+      "estimate_error": 0.029146104820310752,
+      "joint_improvements": 0,
+      "joules_per_token": 0.8306562808242344,
+      "link_mb_by_kind": {
+        "activation": 0.031744,
+        "output": 0.031744,
+        "replicate": 7.5064987543675405,
+        "weights": 52.91827200000173
+      },
+      "link_mb_per_token": 60.48825875436927,
+      "mode_counts": {
+        "activation_stationary": 319,
+        "weight_stationary": 7377
+      },
+      "plans_per_op": 11.31081081081081,
+      "policy": "adaptive",
+      "prefetch": {
+        "cancelled": 0,
+        "hits": 0,
+        "issued": 0,
+        "issued_bytes": 0,
+        "mispredicted": 0,
+        "wasted_bytes": 0
+      },
+      "stall_ms_per_token": 2.332306166666774,
+      "token_latency_ms": 6.881477472042435,
+      "tokens": 16,
+      "tokens_per_joule": 1.2038673794264592,
+      "tokens_per_s": 145.31763041624814
+    },
+    "complete": {
+      "batch": 1,
+      "cache_hit_rate": 0.8263346354166666,
+      "devices": {
+        "gpu": {
+          "busy_fraction": 0.7202081054674482,
+          "kernels": 6613,
+          "mem_utilisation_busy": 0.7243863237720051
+        },
+        "host": {
+          "busy_fraction": 0.0,
+          "kernels": 0,
+          "mem_utilisation_busy": 0.0
+        },
+        "mod0": {
+          "busy_fraction": 0.293727961971445,
+          "kernels": 325,
+          "mem_utilisation_busy": 1.0444702907797434
+        },
+        "mod1": {
+          "busy_fraction": 0.2885552128009253,
+          "kernels": 315,
+          "mem_utilisation_busy": 1.032232406275064
+        },
+        "mod2": {
+          "busy_fraction": 0.259070542528963,
+          "kernels": 258,
+          "mem_utilisation_busy": 1.0455574629693458
+        },
+        "mod3": {
+          "busy_fraction": 0.24613866960266378,
+          "kernels": 233,
+          "mem_utilisation_busy": 1.0475191527172307
+        }
+      },
+      "estimate_error": 0.0004955812181945227,
+      "joint_improvements": 406,
+      "joules_per_token": 0.9003236953670852,
+      "link_mb_by_kind": {
+        "activation": 0.532992,
+        "output": 1.107968,
+        "prefetch": 26.717473664519392,
+        "replicate": 9.289727999999918
+      },
+      "link_mb_per_token": 37.64816166451931,
+      "mode_counts": {
+        "distributed": 16,
+        "output_stationary": 6144,
+        "row_stationary": 1067,
+        "weight_stationary": 6613
+      },
+      "plans_per_op": 17.488045738045738,
+      "policy": "complete",
+      "prefetch": {
+        "cancelled": 48,
+        "hits": 72,
+        "issued": 120,
+        "issued_bytes": 318504960,
+        "mispredicted": 48,
+        "wasted_bytes": 19507820.727359056
+      },
+      "stall_ms_per_token": 0.0,
+      "token_latency_ms": 6.052460042133378,
+      "tokens": 16,
+      "tokens_per_joule": 1.1107116308787965,
+      "tokens_per_s": 165.02629352432353
+    },
+    "compression": {
+      "batch": 1,
+      "cache_hit_rate": 0.9212239583333334,
+      "devices": {
+        "gpu": {
+          "busy_fraction": 0.696242069592304,
+          "kernels": 7696,
+          "mem_utilisation_busy": 0.7524378348237639
+        },
+        "host": {
+          "busy_fraction": 0.0,
+          "kernels": 0,
+          "mem_utilisation_busy": 0.0
+        }
+      },
+      "estimate_error": 0.03374617299934831,
+      "joint_improvements": 0,
+      "joules_per_token": 0.7040648450113861,
+      "link_mb_by_kind": {
+        "weights": 73.50976874999
+      },
+      "link_mb_per_token": 73.50976874999,
+      "mode_counts": {
+        "activation_stationary": 7696
+      },
+      "plans_per_op": 1.997920997920998,
+      "policy": "compression",
+      "prefetch": {
+        "cancelled": 0,
+        "hits": 0,
+        "issued": 0,
+        "issued_bytes": 0,
+        "mispredicted": 0,
+        "wasted_bytes": 0
+      },
+      "stall_ms_per_token": 5.036713281250439,
+      "token_latency_ms": 7.6131439911185135,
+      "tokens": 16,
+      "tokens_per_joule": 1.4203237203013992,
+      "tokens_per_s": 131.35177807836013
+    },
+    "cpu_only": {
+      "batch": 1,
+      "cache_hit_rate": 0.0,
+      "devices": {
+        "gpu": {
+          "busy_fraction": 0.0,
+          "kernels": 0,
+          "mem_utilisation_busy": 0.0
+        },
+        "host": {
+          "busy_fraction": 0.999239246458383,
+          "kernels": 7696,
+          "mem_utilisation_busy": 0.275341888822465
+        }
+      },
+      "estimate_error": 1.0624446328221221e-13,
+      "joint_improvements": 0,
+      "joules_per_token": 29.22072870959993,
+      "link_mb_by_kind": {},
+      "link_mb_per_token": 0.0,
+      "mode_counts": {
+        "weight_stationary": 7696
+      },
+      "plans_per_op": 1.997920997920998,
+      "policy": "cpu_only",
+      "prefetch": {
+        "cancelled": 0,
+        "hits": 0,
+        "issued": 0,
+        "issued_bytes": 0,
+        "mispredicted": 0,
+        "wasted_bytes": 0
+      },
+      "stall_ms_per_token": 0.0,
+      "token_latency_ms": 128.8196434666657,
+      "tokens": 16,
+      "tokens_per_joule": 0.03422228137902217,
+      "tokens_per_s": 7.7627912412191025
+    },
+    "distributed": {
+      "batch": 1,
+      "cache_hit_rate": 0.0,
+      "devices": {
+        "gpu": {
+          "busy_fraction": 0.14809218975407987,
+          "kernels": 1536,
+          "mem_utilisation_busy": 0.83626304885344
+        },
+        "host": {
+          "busy_fraction": 0.0,
+          "kernels": 0,
+          "mem_utilisation_busy": 0.0
+        },
+        "mod0": {
+          "busy_fraction": 0.5173848351649561,
+          "kernels": 1681,
+          "mem_utilisation_busy": 0.9839688809116209
+        },
+        "mod1": {
+          "busy_fraction": 0.5138888499413578,
+          "kernels": 1668,
+          "mem_utilisation_busy": 0.9839843013485875
+        },
+        "mod2": {
+          "busy_fraction": 0.4474257055888878,
+          "kernels": 1421,
+          "mem_utilisation_busy": 0.9844979206808618
+        },
+        "mod3": {
+          "busy_fraction": 0.4520010991028464,
+          "kernels": 1438,
+          "mem_utilisation_busy": 0.984453308745003
+        }
+      },
+      "estimate_error": 0.0014997620087171075,
+      "joint_improvements": 0,
+      "joules_per_token": 1.6663849396222694,
+      "link_mb_by_kind": {
+        "activation": 1.4617599999999997,
+        "output": 3.7534719999999995
+      },
+      "link_mb_per_token": 5.215231999999999,
+      "mode_counts": {
+        "distributed": 16,
+        "weight_stationary": 7680
+      },
+      "plans_per_op": 1.997920997920998,
+      "policy": "distributed",
+      "prefetch": {
+        "cancelled": 0,
+        "hits": 0,
+        "issued": 0,
+        "issued_bytes": 0,
+        "mispredicted": 0,
+        "wasted_bytes": 0
+      },
+      "stall_ms_per_token": 0.0,
+      "token_latency_ms": 11.663935010132365,
+      "tokens": 16,
+      "tokens_per_joule": 0.600101438882829,
+      "tokens_per_s": 85.73435972776839
+    },
+    "gpu_only": {
+      "batch": 1,
+      "cache_hit_rate": 0.9212239583333334,
+      "devices": {
+        "gpu": {
+          "busy_fraction": 0.6711299976581966,
+          "kernels": 7696,
+          "mem_utilisation_busy": 0.7528023069229157
+        },
+        "host": {
+          "busy_fraction": 0.0,
+          "kernels": 0,
+          "mem_utilisation_busy": 0.0
+        }
+      },
+      "estimate_error": 0.031870294767213696,
+      "joint_improvements": 0,
+      "joules_per_token": 0.7265667776999606,
+      "link_mb_by_kind": {
+        "weights": 80.2897919999929
+      },
+      "link_mb_per_token": 80.2897919999929,
+      "mode_counts": {
+        "activation_stationary": 7696
+      },
+      "plans_per_op": 1.997920997920998,
+      "policy": "gpu_only",
+      "prefetch": {
+        "cancelled": 0,
+        "hits": 0,
+        "issued": 0,
+        "issued_bytes": 0,
+        "mispredicted": 0,
+        "wasted_bytes": 0
+      },
+      "stall_ms_per_token": 5.487314000000019,
+      "token_latency_ms": 7.894185695199438,
+      "tokens": 16,
+      "tokens_per_joule": 1.3763359827236072,
+      "tokens_per_s": 126.67551012995725
+    },
+    "predictive": {
+      "batch": 1,
+      "cache_hit_rate": 0.9280598958333334,
+      "devices": {
+        "gpu": {
+          "busy_fraction": 0.7603232200675131,
+          "kernels": 7571,
+          "mem_utilisation_busy": 0.7462510464278194
+        },
+        "host": {
+          "busy_fraction": 0.17899442583366235,
+          "kernels": 125,
+          "mem_utilisation_busy": 1.2266337977950121
+        }
+      },
+      "estimate_error": 0.029306014179604482,
+      "joint_improvements": 0,
+      "joules_per_token": 0.8327385738263872,
+      "link_mb_by_kind": {
+        "activation": 0.032,
+        "output": 0.032,
+        "prefetch": 0.7725269368320845,
+        "replicate": 7.506498754367642,
+        "weights": 52.58649600000198
+      },
+      "link_mb_per_token": 60.92952169120171,
+      "mode_counts": {
+        "activation_stationary": 317,
+        "weight_stationary": 7379
+      },
+      "plans_per_op": 11.306782744282744,
+      "policy": "predictive",
+      "prefetch": {
+        "cancelled": 4,
+        "hits": 3,
+        "issued": 7,
+        "issued_bytes": 18579456,
+        "mispredicted": 4,
+        "wasted_bytes": 4397806.989313327
+      },
+      "stall_ms_per_token": 2.342578174933437,
+      "token_latency_ms": 6.887958908539936,
+      "tokens": 16,
+      "tokens_per_joule": 1.2008570653873472,
+      "tokens_per_s": 145.18088932850117
+    },
+    "static_split": {
+      "batch": 1,
+      "cache_hit_rate": 0.7291666666666666,
+      "devices": {
+        "gpu": {
+          "busy_fraction": 0.07773035126724089,
+          "kernels": 5600,
+          "mem_utilisation_busy": 0.7073470914520354
+        },
+        "host": {
+          "busy_fraction": 0.9196503946765464,
+          "kernels": 2096,
+          "mem_utilisation_busy": 0.2820979857125896
+        }
+      },
+      "estimate_error": 8.616631905541477e-13,
+      "joint_improvements": 0,
+      "joules_per_token": 9.987680169119432,
+      "link_mb_by_kind": {
+        "activation": 0.004096,
+        "output": 0.303872
+      },
+      "link_mb_per_token": 0.307968,
+      "mode_counts": {
+        "weight_stationary": 7696
+      },
+      "plans_per_op": 1.997920997920998,
+      "policy": "static_split",
+      "prefetch": {
+        "cancelled": 0,
+        "hits": 0,
+        "issued": 0,
+        "issued_bytes": 0,
+        "mispredicted": 0,
+        "wasted_bytes": 0
+      },
+      "stall_ms_per_token": 0.0,
+      "token_latency_ms": 46.13221833599244,
+      "tokens": 16,
+      "tokens_per_joule": 0.10012335027425746,
+      "tokens_per_s": 21.676824485585126
+    }
+  },
+  "correctness": {
+    "fused_equals_unfused": true,
+    "gaussian_int4_entropy_bits": 3.624025484871872,
+    "runs": [
+      {
+        "accounting_violations": 0,
+        "dependency_violations": 0,
+        "graph": "fused",
+        "max_rel_l2": 0.0004450207242812591,
+        "ok": true,
+        "routing_matches": true,
+        "tokens_match": true
+      },
+      {
+        "accounting_violations": 0,
+        "dependency_violations": 0,
+        "graph": "unfused",
+        "max_rel_l2": 0.0004450281457317956,
+        "ok": true,
+        "routing_matches": true,
+        "tokens_match": true
+      }
+    ]
+  },
+  "gpu_memory": [
+    {
+      "adaptive": 84.03295652194993,
+      "complete": 134.60472139587108,
+      "distributed": 85.73435972776839,
+      "gpu_gib": 6,
+      "static_split": 11.27790862241079
+    },
+    {
+      "adaptive": 104.16039305522615,
+      "complete": 146.1852425861003,
+      "distributed": 85.73435972776839,
+      "gpu_gib": 8,
+      "static_split": 13.424617009336485
+    },
+    {
+      "adaptive": 145.31763041624814,
+      "complete": 165.02629352432353,
+      "distributed": 85.73435972776839,
+      "gpu_gib": 12,
+      "static_split": 21.676824485585126
+    },
+    {
+      "adaptive": 183.26324224434373,
+      "complete": 173.34063870043548,
+      "distributed": 85.73435972776839,
+      "gpu_gib": 16,
+      "static_split": 56.26063923121994
+    },
+    {
+      "adaptive": 186.2603223712393,
+      "complete": 173.4599455226724,
+      "distributed": 85.73435972776839,
+      "gpu_gib": 24,
+      "static_split": 186.2603223712393
+    }
+  ],
+  "latency": [
+    {
+      "adaptive": 169.7202194040469,
+      "complete": 195.2997059772147,
+      "distributed": 93.14946241639905,
+      "latency_scale": 0.25
+    },
+    {
+      "adaptive": 145.31763041624814,
+      "complete": 165.02629352432353,
+      "distributed": 85.73435972776839,
+      "latency_scale": 1.0
+    },
+    {
+      "adaptive": 91.85269346408008,
+      "complete": 107.53855890507815,
+      "distributed": 65.02823684331047,
+      "latency_scale": 4.0
+    },
+    {
+      "adaptive": 37.503723902797155,
+      "complete": 43.01044230210809,
+      "distributed": 33.07940028599219,
+      "latency_scale": 16.0
+    }
+  ],
+  "model": {
+    "active_params": 3353020416,
+    "name": "Qwen3-30B-A3B",
+    "total_params": 30532110336
+  },
+  "modes": {
+    "cold_stream": {
+      "results": {
+        "activation_stationary": 16003.784,
+        "streaming": 14168.776000000002
+      },
+      "winner": "streaming"
+    },
+    "fan_in": {
+      "results": {
+        "output_stationary": 512.0,
+        "weight_stationary": 1280.0
+      },
+      "winner": "output_stationary"
+    },
+    "repeated_use": {
+      "results": {
+        "activation_stationary": 704.6266239999983,
+        "weight_stationary": 4138.4960000000065
+      },
+      "winner": "activation_stationary"
+    },
+    "sharded_projection": {
+      "results": {
+        "distributed": 838.6693333333332,
+        "weight_stationary": 3275.549333333333
+      },
+      "winner": "distributed"
+    },
+    "single_use": {
+      "results": {
+        "activation_stationary": 181.196416,
+        "streaming": 175.888,
+        "weight_stationary": 64.66400000000002
+      },
+      "winner": "weight_stationary"
+    },
+    "sram_reuse": {
+      "results": {
+        "row_stationary": 573.8240000000002,
+        "weight_stationary": 1034.6239999999998
+      },
+      "winner": "row_stationary"
+    }
+  },
+  "multi_user": [
+    {
+      "aggregate_tokens_per_s": 147.59302312883156,
+      "configuration": "adaptive",
+      "per_sequence_latency_ms": 6.7643110138033755,
+      "sequences": 1
+    },
+    {
+      "aggregate_tokens_per_s": 164.01624038965326,
+      "configuration": "complete",
+      "per_sequence_latency_ms": 6.018732398933319,
+      "sequences": 1
+    },
+    {
+      "aggregate_tokens_per_s": 283.79652783975456,
+      "configuration": "adaptive",
+      "per_sequence_latency_ms": 28.125285758054062,
+      "sequences": 8
+    },
+    {
+      "aggregate_tokens_per_s": 408.56844859138624,
+      "configuration": "complete",
+      "per_sequence_latency_ms": 19.58056239433429,
+      "sequences": 8
+    }
+  ],
+  "predictive": [
+    {
+      "cache_hit_rate": 0.013888888888888888,
+      "policy": "reactive cache",
+      "prefetch_hits": 0,
+      "prefetch_issued": 0,
+      "routing": "cyclic",
+      "stall_ms_per_token": 5.924945777777646,
+      "tokens_per_s": 379.51023627151716,
+      "wasted_mb": 0.0
+    },
+    {
+      "cache_hit_rate": 0.2526041666666667,
+      "policy": "with prefetch",
+      "prefetch_hits": 288,
+      "prefetch_issued": 288,
+      "routing": "cyclic",
+      "stall_ms_per_token": 4.167543309333157,
+      "tokens_per_s": 391.4952345314467,
+      "wasted_mb": 0.0
+    },
+    {
+      "cache_hit_rate": 0.7170138888888888,
+      "policy": "reactive cache",
+      "prefetch_hits": 0,
+      "prefetch_issued": 0,
+      "routing": "sticky",
+      "stall_ms_per_token": 0.9566377777777798,
+      "tokens_per_s": 1045.259086542115,
+      "wasted_mb": 0.0
+    },
+    {
+      "cache_hit_rate": 0.7682291666666666,
+      "policy": "with prefetch",
+      "prefetch_hits": 42,
+      "prefetch_issued": 74,
+      "routing": "sticky",
+      "stall_ms_per_token": 0.8325045675555555,
+      "tokens_per_s": 1143.7675694226064,
+      "wasted_mb": 18.864271872001982
+    }
+  ],
+  "scaling": [
+    {
+      "efficiency": 1.0,
+      "modules": 1,
+      "speedup": 1.0,
+      "tokens_per_s": 45.12873966111336
+    },
+    {
+      "efficiency": 0.6752088269673824,
+      "modules": 2,
+      "speedup": 1.3504176539347648,
+      "tokens_per_s": 60.942646738193474
+    },
+    {
+      "efficiency": 0.47494324221979206,
+      "modules": 4,
+      "speedup": 1.8997729688791682,
+      "tokens_per_s": 85.73435972776839
+    }
+  ],
+  "section6": {
+    "Cold weight transfer, excluding execution": "4.129 ms",
+    "Expert parameters": "176.2M",
+    "Input/output activations": "16.0 KiB",
+    "Interconnect traffic reduction": "6,048x",
+    "Near-memory execution, including activations": "1.836 ms",
+    "Near-memory kernel limited by": "memory bandwidth",
+    "Weight transfer size": "94.5 MiB"
+  },
+  "workload": {
+    "_note": "Synthetic routing trace (Zipf popularity, per-slot stickiness). Not measured router behaviour; see docs/limitations.md.",
+    "batch": 1,
+    "context_len": 2048,
+    "model": "qwen3-30b-a3b",
+    "tokens": 24,
+    "trace": {
+      "prior_steps": 64,
+      "seed": 7,
+      "stickiness": 0.6,
+      "zipf_s": 0.8
+    },
+    "warmup_tokens": 8
+  }
+}
