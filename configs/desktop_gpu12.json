@@ -1,0 +1,66 @@
+{
+  "name": "desktop_gpu12",
+  "_note": "ILLUSTRATIVE PROFILE. Every rate, latency and energy figure below is a modelling assumption chosen to be plausible for the named class of hardware; none is a measurement. Replace with measured values before drawing hardware conclusions.",
+  "host": "host",
+  "sync_latency_s": 2e-06,
+  "devices": [
+    {
+      "name": "host",
+      "kind": "CPU",
+      "mem_capacity": 68719476736,
+      "mem_bandwidth": 54000000000.0,
+      "compute_rate": 30000000000.0,
+      "kernel_startup_s": 5e-07,
+      "decode_rate": {
+        "INT4": "inf",
+        "ENTROPY": 4000000000.0
+      },
+      "stream_formats": [
+        "INT4"
+      ],
+      "expanded_format": "INT4",
+      "stream_ingest": false,
+      "power": {
+        "idle_w": 45.0,
+        "joules_per_mac": 5e-09,
+        "joules_per_mem_byte": 1.5e-10
+      },
+      "_comment": "16-core desktop CPU, 2x DDR5-5600 (89.6 GB/s theoretical x 0.6 sustained = 54 GB/s), ~30 GMAC/s INT4 kernels"
+    },
+    {
+      "name": "gpu",
+      "kind": "GPU",
+      "mem_capacity": 12884901888,
+      "mem_bandwidth": 500000000000.0,
+      "compute_rate": 20000000000000.0,
+      "kernel_startup_s": 3e-06,
+      "decode_rate": {
+        "INT4": "inf",
+        "ENTROPY": 40000000000.0
+      },
+      "stream_formats": [
+        "INT4"
+      ],
+      "expanded_format": "INT4",
+      "stream_ingest": true,
+      "power": {
+        "idle_w": 30.0,
+        "joules_per_mac": 1.5e-11,
+        "joules_per_mem_byte": 3e-11
+      },
+      "_comment": "12 GB discrete GPU; kernels are memory-bound; 3 us launch overhead per kernel"
+    }
+  ],
+  "links": [
+    {
+      "name": "pcie-gpu",
+      "a": "host",
+      "b": "gpu",
+      "bandwidth_ab": 24000000000.0,
+      "bandwidth_ba": 24000000000.0,
+      "latency_s": 5e-06,
+      "dma_queue_depth": 8,
+      "joules_per_byte": 6e-11
+    }
+  ]
+}
