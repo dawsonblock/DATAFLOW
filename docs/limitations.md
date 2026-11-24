@@ -122,5 +122,8 @@ and the hardware gate in the report says so in its evidence column.
 * Background replication and prefetch share one budget per link direction; there is no
   per-destination fairness.
 * The quick report (`--quick`) uses short runs; its numbers differ from the full report's.
+* Generated files are byte-identical only on the same Python and NumPy versions. Between Python
+  3.10 and 3.13 simulated figures differ in the last digit (about 1e-16 relative), because the
+  built-in float summation changed in Python 3.12.
 * The v0.1 report in `reports/v0.1/` was produced by the v0.1 model (one GPU launch per expert,
   output projection pinned to modules) and is kept as a record only.

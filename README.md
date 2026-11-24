@@ -108,8 +108,11 @@ python -m benchmarks.explore --budget 2000 --workers 4                     # ful
 python -m benchmarks.run_report                  # the full report -> reports/v0.2/ (~10 min)
 ```
 
-Both the exploration and the report are deterministic: the same code, profiles, estimates and
-seeds reproduce the committed files exactly.
+Both the exploration and the report are deterministic: on the same Python and NumPy versions
+(the committed files were generated with Python 3.13 and NumPy 2.5) the same code, profiles,
+estimates and seeds reproduce the committed files exactly. Across Python versions the figures
+agree to about one part in 10^16 (float summation changed in Python 3.12), with the same designs
+on the Pareto front.
 
 Simulating one architecture on one hardware design:
 
