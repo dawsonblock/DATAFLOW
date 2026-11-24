@@ -35,6 +35,27 @@ hardware. **No FPGA development and no hardware purchases until the gate below i
 Phases 4-6 start only after phase 3. If the gate fails for every distributed design, phase 4 (a
 better CPU/GPU runtime) is the product and phases 5-6 are shelved.
 
+### Status after v0.2
+
+| # | Phase | State |
+|---|---|---|
+| 0 | CI | Done |
+| 1 | Measurements | **Tooling done, nothing measured.** The profiling, benchmark, fitting and validation scripts exist ([calibration.md](calibration.md)); they must be run on the two calibration machines. The hardware-facing parts have never been executed |
+| 2 | Investigations and alternatives | Done in simulation, **on an uncalibrated simulator**: all ten investigations, eight architectures, the model-size and workload suites and the design-space exploration are in `reports/v0.2/report.md`. They must be re-run on the calibrated profile |
+| 3 | Hardware gate | Evaluated: **NO-GO**. Calibration is not evaluated, and at the pessimistic corner no module-based design reaches 2x the conventional baseline in throughput per dollar in any regime examined |
+| 4-6 | Runtime, RTL, FPGA | Not started. No FPGA development and no purchases, by decision |
+
+Next actions, in order:
+
+1. Run the calibration procedure on the i9-11900KF + RTX 3080 Ti, then on the MacBook Pro M2.
+2. If validation fails, fix the simulator's model of a conventional system until it passes on
+   fresh validation measurements.
+3. Record real Qwen3-30B-A3B routing and measure real weight compression; replace the synthetic
+   trace and the assumed ratio.
+4. Re-run the exploration and the report on the calibrated profile and re-evaluate the gate.
+5. Only if the gate passes: select an FPGA board and start RTL with Verilator and Yosys. If it
+   does not, the conventional CPU/GPU runtime (phase 4) is the product.
+
 ## Phase 2 investigations
 
 | Investigation | Required improvement |
@@ -112,14 +133,19 @@ Rules of evidence:
 
 ## Release v0.2 — Calibrated Architecture Discovery Engine
 
-* Automated CI and regression testing
-* Hardware profiling and calibration scripts
-* Real MoE routing trace recorder
-* Corrected GPU batching and output placement
-* Critical-path and scaling bottleneck analysis
-* Eight competing dataflow architectures
-* Multi-objective architectural optimisation
-* Equal-cost and equal-power comparisons
-* Numerical verification
-* Reproducible benchmark reports
-* An evidence-gated hardware development decision
+| Item | Where | State |
+|---|---|---|
+| Automated CI and regression testing | `.github/workflows/ci.yml`, `tests/` | Done |
+| Hardware profiling and calibration scripts | `benchmarks/profile_hardware.py`, `run_llama_bench.py`, `calibrate.py` | Written and unit-tested; not yet run on real hardware |
+| Real MoE routing trace recorder | `benchmarks/record_routing_trace.py` | Written; collection logic tested on stand-in modules; never run on a model |
+| Corrected GPU batching and output placement | `simulator/compute.py`, `scheduler/placement.py` | Done |
+| Critical-path and scaling bottleneck analysis | `basp/analysis/`, report section 4 | Done |
+| Eight competing dataflow architectures | `experiments/architectures.py` | Done |
+| Multi-objective architectural optimisation | `basp/dse/`, `benchmarks/explore.py` | Done |
+| Equal-cost and equal-power comparisons | report section 7 | Done, with an estimated price model |
+| Numerical verification | `basp/verification/`, report section 8 | Done on a small random-weight model; real weights not run |
+| Reproducible benchmark reports | `benchmarks/run_report.py` | Done (deterministic) |
+| Evidence-gated hardware development decision | `experiments/gate.py`, report section 1 | Done: NO-GO |
+
+"Calibrated" in the release name describes what the system can do, not its current state: the
+engine accepts measurements and gates its conclusions on them, and no measurements exist yet.

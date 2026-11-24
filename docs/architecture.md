@@ -1,8 +1,9 @@
-# BASP Dataflow v0.1 — architecture of the implementation
+# BASP Dataflow v0.2 — architecture of the implementation
 
 This document describes what is implemented in this repository and how the pieces map onto the
-BASP Adaptive Dataflow Architecture. For what is *not* implemented, see
-[limitations.md](limitations.md).
+BASP Adaptive Dataflow Architecture. The first part covers the dataflow engine (v0.1); the second
+part, from [Architecture discovery](#architecture-discovery-v02), covers what v0.2 adds on top of
+it. For what is *not* implemented, see [limitations.md](limitations.md).
 
 ## The three levels
 
@@ -118,8 +119,99 @@ The graph is extended layer by layer because the experts to run are only known a
   dependencies finished and that devices saw valid inputs.
 * `verification/accounting.py` checks capacity, per-tag sums and byte conservation on links.
 
+## Architecture discovery (v0.2)
+
+v0.2 turns the engine into a tool for comparing architectures rather than validating one.
+
+### Mechanisms added to the simulator
+
+| Mechanism | Where | What it models |
+|---|---|---|
+| Batched launches | `DeviceSpec.warm_startup_s`, `simulator/compute.py` | A kernel that starts the instant the previous one ended pays a reduced launch cost |
+| Persistent kernels | `DeviceSpec.persistent` | Resident operators: no launch cost, never gated |
+| Power gating | `PowerSpec.sleep_w`, `gate_after_s`, `wake_j` | Idle devices drop to a sleep state after a threshold and pay a wake energy |
+| Energy-aware scheduling | `ExecutionPolicy.energy_weight_s_per_j` | Plans are ranked by finish time plus weighted energy |
+| Dependency-event dispatch | `ExecutionPolicy.host_in_loop=False` | Operations are released by completion events, without a host round trip (static dataflows only) |
+| Eager activation streams | `ExecutionPolicy.eager_activations` | The hidden state is broadcast to the modules before the routing decision is known |
+| Concurrent streams | `StreamGroup`, `Setup.run_concurrent` | Independent requests share devices and links without a per-layer barrier |
+| Replicated experts | `place_modules(replicas=...)` | Copies on distinct modules; the scheduler picks the less loaded holder |
+| Tensor-parallel experts | `place_tensor_parallel`, `kernels.split_expert` | Every expert partitioned across all modules, partial outputs summed |
+| Routing-only nodes | `DeviceKind.SWITCH` | Fabrics and multi-engine modules: carry traffic, hold nothing |
+| Dynamic output projection | `place_modules(head="auto")` | Shards on the modules and a copy on the trunk device; chosen per token |
+
+Each is covered by `tests/test_v02_mechanisms.py`, including closed-form expectations (for
+example: removing the host from the loop saves exactly one round trip per issued batch).
+
+### Eight architectures
+
+`experiments/architectures.py` defines each architecture as a placement rule plus an execution
+policy on a topology — none is privileged:
+
+| | Architecture | Placement | Policy |
+|---|---|---|---|
+| A | Centralized | experts on the GPU while they fit, the rest on the host | weight- and activation-stationary, expert cache |
+| B | Distributed | trunk blocks and experts on modules, no GPU | static, distributed |
+| C | Pipeline | consecutive layers on consecutive modules | static, no host in the loop |
+| D | Expert-local | whole experts on modules, trunk on the GPU | static, distributed |
+| E | Tensor-parallel | every expert split across all modules | static, partial sums |
+| F | Adaptive hybrid | experts on modules and cached on the GPU | all modes, cache, prefetch |
+| G | Spatial dataflow | as D with resident kernels | no host in the loop, eager activation streams |
+| H | Hierarchical | as F on a local fabric joining GPU and modules | all modes, cache, prefetch |
+
+All eight reproduce the float64 reference on the small numeric model
+(`tests/test_v02_experiments.py`).
+
+### Parametric hardware and design-space exploration
+
+* `dse/hardware.py` — a `HardwareDesign` (GPU memory, module count, module memory, channels, MAC
+  lanes, link bandwidth, fabric, channel splitting, resident kernels) becomes a simulator topology
+  on top of a *base profile* for the host and GPU, using `configs/design_estimates.json`. Every
+  estimate is a (pessimistic, nominal, optimistic) triple; a design is built at one corner. The
+  same table prices the design.
+* `dse/space.py`, `dse/pareto.py`, `dse/search.py` — constrained design spaces, Pareto utilities
+  and three searches behind one interface: exhaustive enumeration, an NSGA-II evolutionary search
+  and a ParEGO Bayesian search with a NumPy Gaussian process.
+* `experiments/explore.py` — the space of systems (architecture included as a dimension), its
+  feasibility constraints, the seed designs that guarantee every architecture and the conventional
+  baseline are evaluated, and the objective function: one simulation, three objectives
+  (tokens/s, tokens/J, estimated price).
+
+### Analysis
+
+* `analysis/critical.py` walks the realised critical path of each token backwards through the
+  dependency whose result arrived last, and attributes the time to computing, waiting for inputs,
+  waiting for a busy device, returning results and host round trips. The components sum to the
+  token time exactly. `scaling_limit` derives what more modules could deliver if the divisible
+  (expert) work were perfectly balanced.
+* `experiments/investigations.py` — one controlled A/B experiment per Phase 2 question.
+* `experiments/suite.py` — the architecture table with estimate ranges, the model-size suite and
+  the workload-type suite.
+
+### Calibration and the evidence chain
+
+    measurements (run_llama_bench)  ──►  calibration split ──► fit_profile ──► machine profile
+                                    └─►  validation split ──► score ──► calibration verdict
+    machine profile ──► base profile of every design ──► comparison ──► hardware gate
+
+* `calibration/measurements.py` — measurement records with a split declared at recording time;
+  the same benchmark cannot be in both splits.
+* `experiments/calibrate.py` — `predict` simulates the benchmark a measurement describes;
+  `fit_profile` tunes a profile on the calibration split with the simulator in the loop;
+  `score` judges the validation split.
+* `experiments/gate.py` — the hardware gate. A criterion passes only on calibrated evidence, at
+  the pessimistic corner; a criterion that cannot be evaluated counts against the decision; and
+  evidence is "calibrated" only if validation passed *and* the comparison ran on the validated
+  profile.
+* `experiments/report_v2.py` — the deterministic report that ties these together.
+
 ## Extending
 
+* **A calibrated machine**: follow [calibration.md](calibration.md), then pass `--base-profile`
+  to `benchmarks.explore` and `benchmarks.run_report`.
+* **A new architecture**: add an entry to `ARCHITECTURES` and a branch in `configure`; add it to
+  the design space's constraints in `experiments/explore.py`.
+* **A different estimate**: edit `configs/design_estimates.json`; every design, price and corner
+  follows.
 * **A new hardware profile**: add a JSON file to `configs/` (see `desktop_gpu12.json`).
 * **A recorded routing trace**: save it in the `RoutingTrace` JSON format and pass it to
   `Setup.run`.
