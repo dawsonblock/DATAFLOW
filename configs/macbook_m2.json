@@ -1,0 +1,69 @@
+{
+ "name": "macbook_m2",
+ "_note": "UNCALIBRATED PRIOR built from public specifications and assumptions, not from measurements on this machine. Run `python -m benchmarks.profile_hardware --template <this profile>` and `python -m benchmarks.run_llama_bench` on the machine to replace it. Unified memory is modelled as a CPU device and a GPU device that share one memory system through a link with no latency and effectively unlimited bandwidth. Values assume the base M2 chip with 16 GB; edit for M2 Pro or M2 Max.",
+ "host": "host",
+ "sync_latency_s": 1e-06,
+ "devices": [
+  {
+   "name": "host",
+   "kind": "CPU",
+   "mem_capacity": 17179869184,
+   "mem_bandwidth": 70000000000.0,
+   "compute_rate": 80000000000.0,
+   "kernel_startup_s": 5e-07,
+   "warm_startup_s": 5e-08,
+   "decode_rate": {
+    "INT4": "inf",
+    "INT8": "inf"
+   },
+   "stream_formats": [
+    "INT4",
+    "INT8"
+   ],
+   "expanded_format": "INT4",
+   "stream_ingest": false,
+   "power": {
+    "idle_w": 5.0,
+    "joules_per_mac": 2e-10,
+    "joules_per_mem_byte": 8e-11
+   },
+   "_comment": "Apple M2 (4 performance + 4 efficiency cores). Assumed: 70 GB/s usable of the 100 GB/s unified memory bandwidth and 80 GMAC/s for INT4 kernels on the CPU, chosen so that CPU-only decoding of a dense 7B model lands near commonly reported llama.cpp figures. Uncertain; calibration replaces it."
+  },
+  {
+   "name": "gpu",
+   "kind": "GPU",
+   "mem_capacity": 10737418240,
+   "mem_bandwidth": 70000000000.0,
+   "compute_rate": 1800000000000.0,
+   "kernel_startup_s": 5e-06,
+   "warm_startup_s": 3e-07,
+   "decode_rate": {
+    "INT4": "inf",
+    "INT8": "inf"
+   },
+   "stream_formats": [
+    "INT4",
+    "INT8"
+   ],
+   "expanded_format": "INT4",
+   "stream_ingest": true,
+   "power": {
+    "idle_w": 3.0,
+    "joules_per_mac": 1e-11,
+    "joules_per_mem_byte": 8e-11
+   }
+  }
+ ],
+ "links": [
+  {
+   "name": "unified",
+   "a": "host",
+   "b": "gpu",
+   "bandwidth_ab": 1000000000000000.0,
+   "bandwidth_ba": 1000000000000000.0,
+   "latency_s": 0.0,
+   "dma_queue_depth": 64,
+   "joules_per_byte": 0.0
+  }
+ ]
+}

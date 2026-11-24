@@ -138,8 +138,17 @@ def place_static_split(
     return report
 
 
-def coactivation(trace: RoutingTrace) -> np.ndarray:
-    """[layers, experts, experts] probability that two experts are selected in the same visit."""
+def coactivation(trace: RoutingTrace, *, prior_visits: float | None = None) -> np.ndarray:
+    """[layers, experts, experts] probability that two experts are selected in the same visit.
+
+    The empirical co-selection rate is shrunk towards independence (the product
+    of the two selection frequencies) with the weight of ``prior_visits`` pseudo
+    observations.  Pair probabilities are tiny -- about ``(top_k / n_experts)^2``
+    -- so they need thousands of visits to estimate; the default prior is 16
+    times the reciprocal of that probability.  A short profiling trace therefore
+    yields essentially a frequency-balanced placement, and only well-supported
+    co-activation structure changes where experts go.
+    """
     counts = np.zeros((trace.n_layers, trace.n_experts, trace.n_experts))
     visits = 0
     for step in trace.steps:
@@ -148,7 +157,14 @@ def coactivation(trace: RoutingTrace) -> np.ndarray:
                 idx = np.asarray(row)
                 counts[layer][np.ix_(idx, idx)] += 1.0
         visits += trace.batch
-    return counts / max(visits, 1)
+    visits = max(visits, 1)
+    if prior_visits is None:
+        prior_visits = 16.0 * (trace.n_experts / trace.top_k) ** 2
+    empirical = counts / visits
+    freq = np.einsum("lii->li", empirical)
+    independent = freq[:, :, None] * freq[:, None, :]
+    weight = visits / (visits + prior_visits)
+    return weight * empirical + (1.0 - weight) * independent
 
 
 def _assign_experts(n_experts: int, modules: Sequence[int], policy: str, freq, co, copies: Sequence[int]):
@@ -231,6 +247,8 @@ def place_modules(
         raise PlacementError("no modules to place experts on")
     if replicas < 1 or not 0.0 <= replicate_top <= 1.0:
         raise PlacementError("replicas must be >= 1 and replicate_top within [0, 1]")
+    if policy not in ("round_robin", "balanced", "coactivation"):
+        raise PlacementError(f"unknown expert distribution policy {policy!r}")
     if head_on_modules is not None:  # backwards-compatible spelling
         head = "modules" if head_on_modules else "trunk"
     spec = program.spec
@@ -250,7 +268,12 @@ def place_modules(
                             key=lambda e: (-(freq[e] if freq is not None else 0.0), e))  # fmt: skip
             for e in ranked[: round(replicate_top * spec.n_experts)]:
                 copies[e] = min(replicas, len(modules))
-        placed = _assign_experts(spec.n_experts, modules, policy, freq, co, copies)
+        order = list(modules)
+        if spec.n_experts < len(modules):
+            # fewer experts than modules (dense models): rotate so layers spread over modules
+            shift = layer % len(modules)
+            order = order[shift:] + order[:shift]
+        placed = _assign_experts(spec.n_experts, order, policy, freq, co, copies)
         for e, parts in enumerate(program.expert_parts[layer]):
             for i, device in enumerate(placed[e]):
                 for tensor in parts:

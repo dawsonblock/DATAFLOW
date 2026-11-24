@@ -389,6 +389,7 @@ class Runtime:
         self._sync_s = system.topology.sync_latency_s if host else 0.0
         self._decision_s = self.policy.decision_latency_s if host else 0.0
         self._expert_devices: dict[int, tuple[int, ...]] = {}
+        self._released: set[int] = set()
 
     # backwards-compatible views of the shared measurements
     @property
@@ -424,6 +425,7 @@ class Runtime:
         self._plans.clear()
         self._op_pending.clear()
         self._records.clear()
+        self._released = set()
         program = self.program
         x = program.input_tensor(self.graph, step)
         self.system.residency.place(x, program.trunk_device[0], now=self.sim.now)
@@ -441,6 +443,9 @@ class Runtime:
         else:
             routing = self.routing.select(step, layer)
         selected = set(routing.unique_experts())
+        # Everything produced before this trunk block has been consumed: release it now, so
+        # scratch memory holds one layer's temporaries rather than a whole step's.
+        self._release(keep=set(tensors.values()))
         if self.prefetcher is not None:
             for tensor, device in self.prefetcher.reveal(layer, selected):
                 loading = self.system.loading.get((tensor, device))
@@ -471,14 +476,10 @@ class Runtime:
         self._submit(ops, then, f"s{step}.l{layer}", prefetch_after=layer, broadcast=broadcast)
 
     def _end_step(self, step: int) -> None:
-        residency, registry = self.system.residency, self.system.registry
+        residency = self.system.residency
         if self.payload is not None:
             self.payload.end_step(step)
-        for tensor in self.program.temporaries(self.graph) + self.emitter.partials:
-            if tensor in registry:
-                if residency.copies(tensor):
-                    residency.drop(tensor)
-                registry.unregister(tensor)
+        self._release(keep=set())
         for layer, kv in enumerate(self.program.kv):
             residency.write(kv, self.program.trunk_device[layer])  # KV append = versioned write
         self.meter.token_done(self.stream, step, self._step_start)
@@ -486,6 +487,17 @@ class Runtime:
             self._begin_step(step + 1)
         else:
             self.done = True
+
+    def _release(self, keep: set[int]) -> None:
+        """Free the step's temporaries (dependency-managed lifetime) except ``keep``."""
+        residency, registry = self.system.residency, self.system.registry
+        for tensor in self.program.temporaries(self.graph) + self.emitter.partials:
+            if tensor in keep or tensor in self._released or tensor not in registry:
+                continue
+            if residency.copies(tensor):
+                residency.drop(tensor)
+            registry.unregister(tensor)
+            self._released.add(tensor)
 
     # -- batches ------------------------------------------------------------------
     def _targets(self, layer: int, source: int) -> tuple[int, ...]:

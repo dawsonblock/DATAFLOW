@@ -18,13 +18,14 @@ import time
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
-from basp.dse.search import search
+from basp.dse.search import evolutionary, search
 from basp.experiments.explore import (
     DEFAULT_WORKLOAD,
     OBJECTIVES,
     design_space,
     evaluate_corners,
     evaluate_design,
+    seed_designs,
 )
 from basp.workloads.zoo import MODELS
 
@@ -37,30 +38,41 @@ def main() -> None:
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--model", default=DEFAULT_WORKLOAD["model"], choices=sorted(MODELS))
+    parser.add_argument("--base-profile", default="desktop_gpu12",
+                        help="host/GPU profile every design is built on (a calibrated machine profile)")  # fmt: skip
     parser.add_argument("--out", default="reports/v0.2/dse.json")
     args = parser.parse_args()
 
     workload = dict(DEFAULT_WORKLOAD, model=args.model)
     spec = MODELS[args.model]
     space = design_space(spec.bytes_at() / 2**30)
-    evaluate = functools.partial(evaluate_design, workload=workload)
+    evaluate = functools.partial(evaluate_design, workload=workload, base_profile=args.base_profile)
+    corners_of = functools.partial(evaluate_corners, workload=workload, base_profile=args.base_profile)
     t0 = time.perf_counter()
+
+    def run(map_fn):
+        if args.method == "evolutionary":
+            # seeded so that the conventional baseline and every architecture are always judged
+            population = max(8, min(64, round(args.budget**0.5)))
+            return evolutionary(space, evaluate, OBJECTIVES, population=population,
+                                generations=max(1, args.budget // population - 1), seed=args.seed,
+                                initial=seed_designs(space), map_fn=map_fn)  # fmt: skip
+        return search(space, evaluate, OBJECTIVES, method=args.method, budget=args.budget,
+                      seed=args.seed, **({} if args.method == "bayesian" else {"map_fn": map_fn}))  # fmt: skip
+
     if args.workers > 1 and args.method != "bayesian":
         with ProcessPoolExecutor(args.workers) as pool:
-            map_fn = functools.partial(pool.map, chunksize=1)
-            result = search(space, evaluate, OBJECTIVES, method=args.method, budget=args.budget,
-                            seed=args.seed, map_fn=map_fn)  # fmt: skip
-            corners = list(pool.map(functools.partial(evaluate_corners, workload=workload),
-                                    [e.config for e in result.front]))  # fmt: skip
+            result = run(functools.partial(pool.map, chunksize=1))
+            corners = list(pool.map(corners_of, [e.config for e in result.front]))
     else:
-        result = search(space, evaluate, OBJECTIVES, method=args.method, budget=args.budget,
-                        seed=args.seed)  # fmt: skip
-        corners = [evaluate_corners(e.config, workload=workload) for e in result.front]
+        result = run(map)
+        corners = [corners_of(e.config) for e in result.front]
     feasible = sum(1 for _ in space.enumerate())
     data = {
         "_note": "Simulated under configs/design_estimates.json; prices and module parameters "
                  "are estimates, not measurements.",
         "workload": workload,
+        "base_profile": args.base_profile,
         "method": result.method,
         "seed": args.seed,
         "space_size": space.size,

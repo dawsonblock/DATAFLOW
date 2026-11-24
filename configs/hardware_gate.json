@@ -1,0 +1,18 @@
+{
+  "_note": "Proposed acceptance thresholds for starting hardware development. Targets, not results.",
+  "calibration_median_max": 0.1,
+  "calibration_p95_max": 0.2,
+  "min_validation_measurements": 8,
+  "throughput_min": 2.0,
+  "energy_min": 2.0,
+  "cost_efficiency_min": 2.0,
+  "scaling_efficiency_min": 0.7,
+  "scheduler_overhead_max": 0.05,
+  "numeric_rel_l2_max": 0.002,
+  "plan_evaluation_cost_s": {
+    "optimistic": 5e-08,
+    "nominal": 2e-07,
+    "pessimistic": 1e-06
+  },
+  "decision_corner": "pessimistic"
+}

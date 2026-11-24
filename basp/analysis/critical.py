@@ -10,8 +10,11 @@ result arrived last.  The time on that chain is attributed
   and the host issuing the operations that depend on it), and
 * by **operation kind**: trunk, expert, reduce, head.
 
-The chain's components sum to the token time, so the breakdown says exactly
-where a token's latency goes.  From it follows what more modules can and cannot
+A token's interval runs from the delivery of the previous token's last result
+to the delivery of its own, so the host round trip between two tokens is
+counted (as ``host``) and the intervals add up to the run.  The chain's
+components sum to the token time, so the breakdown says exactly where a
+token's latency goes.  From it follows what more modules can and cannot
 buy: only the expert phase is divisible among modules; everything else on the
 chain is a serial dependency.
 """
@@ -52,16 +55,21 @@ class CriticalPathReport:
 def analyse_critical_path(op_log: Sequence[OpRecord], *, skip_steps: int = 0) -> CriticalPathReport:
     """Analyse a run recorded with ``keep_log=True``; the first ``skip_steps`` steps are ignored."""
     groups: dict[tuple[int, int], list[OpRecord]] = defaultdict(list)
+    ends: dict[tuple[int, int], float] = {}  # (stream, step) -> delivery of its last result
     for record in op_log:
-        if record.step >= skip_steps and record.delivered is not None and record.started is not None:
-            groups[(record.stream, record.step)].append(record)
+        if record.delivered is None or record.started is None:
+            continue
+        key = (record.stream, record.step)
+        ends[key] = max(ends.get(key, record.delivered), record.delivered)
+        if record.step >= skip_steps:
+            groups[key].append(record)
     component: dict[str, float] = defaultdict(float)
     kind: dict[str, float] = defaultdict(float)
     total = residual = work = phase = 0.0
     n_expert = 0
-    for records in groups.values():
+    for (stream, step), records in groups.items():
         by_id = {r.op_id: r for r in records}
-        begin = min(r.issued for r in records)
+        begin = ends.get((stream, step - 1), min(r.issued for r in records))
         current = max(records, key=lambda r: (r.delivered, r.op_id))
         token_time = current.delivered - begin
         accounted = 0.0

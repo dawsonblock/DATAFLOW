@@ -79,6 +79,27 @@ def design_space(model_gib: float, *, gpu_sizes=(0, 12, 24), module_counts=(0, 2
     return DesignSpace(params, [consistent])
 
 
+def seed_designs(space: DesignSpace) -> list[dict[str, Any]]:
+    """Starting designs: every conventional system and one standard system per architecture.
+
+    A search that starts from random designs can miss the conventional baseline
+    entirely (it is a handful of points in thousands); seeding guarantees every
+    architecture is represented and judged on the same footing.
+    """
+    values = {p.name: p.values for p in space.params}
+    seeds: list[dict[str, Any]] = []
+    for gpu in values["gpu_gib"]:
+        seeds.append({"arch": "A", "gpu_gib": gpu, "modules": 0, "module_gib": values["module_gib"][0],
+                      "channels": values["channels"][0], "lanes": values["lanes"][0],
+                      "link_gbps": values["link_gbps"][0], "replicas": 1})  # fmt: skip
+    for arch in ("B", "C", "D", "E", "F", "G", "H"):
+        for gpu in values["gpu_gib"]:
+            for replicas in (1, 2):
+                seeds.append({"arch": arch, "gpu_gib": gpu, "modules": 4, "module_gib": 32,
+                              "channels": 2, "lanes": 1024, "link_gbps": 16.0, "replicas": replicas})  # fmt: skip
+    return [space.canonical(s) for s in seeds if space.feasible(s)]
+
+
 def to_design(config: Mapping[str, Any], host_gib: int = 64) -> HardwareDesign:
     arch = config["arch"]
     return HardwareDesign(
