@@ -64,6 +64,19 @@ and the hardware gate in the report says so in its evidence column.
   running one batched kernel may not leave that gain on the table.
 * Link sharing is fluid (dominant-resource fairness); the estimator approximates it with
   gap-aware booking, so estimates under contention are a few percent off the simulation.
+* **Results are equal within rounding, not bit for bit, across dataflows that reorder
+  additions.** Policies that keep the reduction order produce bit-identical logits whatever the
+  placement, transfer strategy or graph form. Device-local partial sums (output-stationary mode)
+  and tensor-parallel experts add the same FP32 terms in a different order; over 60 random small
+  models this changed logits of magnitude 4 by at most 8e-4 in about one run in five, and never
+  changed routing. A reordered sum could in principle tip a near-tied routing decision. v0.1
+  claimed bit-identity under every policy; its test passed for one seed by luck and failed on
+  another platform. A hardware accumulator wide enough to make the reduction exact would restore
+  the stronger guarantee; that is a design option, not something modelled here.
+* The numeric co-simulation carries expert outputs and partial sums in FP32 and rounds to FP16
+  only at the next kernel's input, while the traffic model charges FP16 sizes for those tensors.
+  One of the two is optimistic: either that traffic is twice what is counted (it is small next to
+  weight traffic), or results carry one more FP16 rounding per expert than the numerics show.
 * Attention is cost-modelled (projection MACs and KV-cache traffic) but not computed numerically;
   the numeric co-simulation uses an attention-free MoE stack. Sampling and the embedding lookup
   have no cost.

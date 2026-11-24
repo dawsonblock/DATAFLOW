@@ -51,7 +51,12 @@ M = DataflowMode
 
 # -- experiments that live only in the report ----------------------------------------------
 def correctness() -> dict[str, Any]:
-    """Numeric co-simulation of a small real-valued model under three dataflow families."""
+    """Numeric co-simulation of a small real-valued model under three dataflow families.
+
+    Dataflows that accumulate partial sums on devices, or partition experts, add the same FP32
+    terms in a different order, so their logits agree within rounding rather than bit for bit.
+    With the reduction order fixed, the graph form must not change a single bit.
+    """
     spec = tiny_spec()
     model = TinyModel.random(spec, seed=3)
     topology = vary_topology(load_topology("basp_4module"), modules=2)
@@ -84,10 +89,18 @@ def correctness() -> dict[str, Any]:
         })  # fmt: skip
         logits.append(np.stack(payload.logits))
     scale = float(np.abs(logits[0]).max())
+    fixed_order = ExecutionPolicy("fixed", ALL_MODES - {M.OUTPUT_STATIONARY},
+                                  cache=CachePolicy("benefit", (gpu,)))  # fmt: skip
+    exact = []
+    for fused in (True, False):
+        setup = build(topology, spec, fixed_order, cases[0][3], batch=3, head_shards=2, fused=fused)
+        payload = NumericPayload(model, setup.program, model.initial_input(3))
+        setup.run(None, tokens=6, payload=payload)
+        exact.append(np.stack(payload.logits))
     return {
         "runs": runs,
-        "fused_equals_unfused": bool(np.array_equal(logits[0], logits[1])),
-        "tensor_parallel_max_abs_diff": float(np.abs(logits[2] - logits[0]).max()),
+        "fused_equals_unfused": bool(np.array_equal(exact[0], exact[1])),
+        "max_abs_diff_between_dataflows": float(max(np.abs(x - logits[0]).max() for x in logits[1:])),
         "logit_scale": scale,
         "max_rel_l2": max(r["max_rel_l2"] for r in runs),
         "all_ok": all(r["ok"] for r in runs),
@@ -769,15 +782,20 @@ kernels following the scheduled plans, and compared with an independent float64 
        [[r["dataflow"], f"{r['max_rel_l2']:.2e}", r["routing_matches"], r["tokens_match"],
          r["dependency_violations"], r["accounting_violations"]] for r in runs])}
 
-Fused and unfused graphs give bit-identical logits: {correct["fused_equals_unfused"]}. Tensor-parallel
-execution with partial sums differs from whole-expert execution by at most
-{correct["tensor_parallel_max_abs_diff"]:.1e} on logits of magnitude {correct["logit_scale"]:.1f} (a different
-FP32 summation order). Real model weights have not been run.
+With the reduction order fixed, fused and unfused graphs give bit-identical logits:
+{correct["fused_equals_unfused"]}. Dataflows that accumulate partial sums on devices, or partition experts across
+modules, add the same FP32 terms in a different order: the three runs above differ from each other
+by at most {correct["max_abs_diff_between_dataflows"]:.1e} on logits of magnitude {correct["logit_scale"]:.1f}, and select the same experts.
+Such differences are at rounding level but are not zero, and a reordered sum could in principle
+tip a near-tied routing decision; none was observed. Real model weights have not been run.
 
 ## 9. What v0.2 corrected in the v0.1 model
 
 * GPU kernels are batched (one launch for back-to-back experts): the conventional baseline is
   faster than v0.1 reported.
+* v0.1 claimed bit-identical logits under every policy. That holds only while the reduction order
+  is unchanged; partial sums accumulated on devices reorder FP32 additions, so those dataflows
+  agree within rounding (section 8). The v0.1 test passed for one model seed by luck.
 * The illustrative desktop's CPU arithmetic rate was raised from 30 to 80 GMAC/s so that CPU-side
   decoding is limited by memory bandwidth, as public llama.cpp figures suggest; the lower value
   roughly halved the conventional baseline for models that do not fit the GPU.

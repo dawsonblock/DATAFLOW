@@ -68,9 +68,11 @@ What the simulation says, under its assumptions:
   on both counts.
 * **Prefill is the workload where hybrids help most** (3.0x prompt tokens/s); other workload
   types range from 1.2x to 1.5x.
-* **Numerics hold.** All eight architectures reproduce a float64 reference on a small
-  random-weight model (relative error 4.5e-4, identical routing and tokens); fused and unfused
-  graphs are bit-identical. Real model weights have not been run.
+* **Numerics hold within tolerance.** All eight architectures reproduce a float64 reference on a
+  small random-weight model (relative error 4.5e-4, identical routing and tokens). Dataflows that
+  keep the reduction order are bit-identical; those that accumulate partial sums on devices or
+  partition experts add in a different FP32 order and agree within rounding only. Real model
+  weights have not been run.
 
 ## What you need to run
 

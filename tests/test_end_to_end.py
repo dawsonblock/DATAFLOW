@@ -57,23 +57,52 @@ def test_co_simulation_matches_the_reference_under_every_policy(name: str, fused
     assert setup.system.stats["completion_overflow"] == 0
 
 
-def test_dataflow_decisions_never_change_model_behaviour():
-    """Different policies, placements and graph forms: identical routing and identical logits."""
-    reference = None
-    for name, policy in POLICIES.items():
+#: FP32 partial sums added in a different order can flip an FP16 rounding downstream; the effect
+#: on logits of magnitude ~4 was at most 8e-4 over 60 model seeds
+REORDER_ATOL = 5e-3
+
+
+def run_logits(model: TinyModel, policy: ExecutionPolicy, *, fused: bool = True, place=modules,
+               head_shards: int = 2):  # fmt: skip
+    setup = build(make_topology(), SPEC, policy, place, batch=2, fused=fused, head_shards=head_shards)
+    payload = NumericPayload(model, setup.program, model.initial_input(2))
+    result = setup.run(None, tokens=5, payload=payload)
+    assert result.ok
+    routing = [[step.experts for step in layer] for layer in payload.routing]
+    return routing, np.stack(payload.logits), payload
+
+
+@pytest.mark.parametrize("seed", [3, 11, 20, 47])
+def test_dataflow_decisions_never_change_model_behaviour(seed: int):
+    """The runtime never changes which experts run, and changes values only by summation order.
+
+    Policies that keep the reduction order give bit-identical logits whatever the placement,
+    transfer strategy or graph form.  A policy that accumulates expert outputs as device-local
+    partial sums adds the same FP32 terms in a different order: identical routing, logits equal
+    within rounding -- not bit for bit (v0.1 asserted bit-identity for one seed, which held by
+    luck and failed on another platform).
+    """
+    model = TinyModel.random(SPEC, seed=seed)
+    routing, logits, _ = run_logits(model, POLICIES["weight-stationary"])
+    for name in ("weight-stationary", "gpu-paging", "streaming"):
         for fused in (True, False):
-            _, payload, result = co_simulate(policy, fused=fused)
-            assert result.ok
-            routing = [[step.experts for step in layer] for layer in payload.routing]
-            logits = np.stack(payload.logits)
-            if reference is None:
-                reference = (routing, logits)
-                continue
-            assert routing == reference[0], f"{name}: routing differs"
-            np.testing.assert_array_equal(logits, reference[1], err_msg=name)
-    _, payload, _ = co_simulate(POLICIES["complete"], place=lambda p, r: placement.place_single(p, r, HOST),
-                                head_shards=1)  # fmt: skip
-    np.testing.assert_array_equal(np.stack(payload.logits), reference[1])
+            other_routing, other, payload = run_logits(model, POLICIES[name], fused=fused)
+            assert not payload.partials, name
+            assert other_routing == routing, f"{name}: routing differs"
+            np.testing.assert_array_equal(other, logits, err_msg=name)
+    no_partials = ExecutionPolicy("np", ALL_MODES - {M.OUTPUT_STATIONARY}, cache=CachePolicy("benefit", (GPU,)),
+                                  prefetch=PrefetchPolicy(min_probability=0.2))  # fmt: skip
+    for policy, kwargs in ((no_partials, {}), (no_partials, {"fused": False}),
+                           (no_partials, {"place": lambda p, r: placement.place_single(p, r, HOST),
+                                          "head_shards": 1})):  # fmt: skip
+        other_routing, other, payload = run_logits(model, policy, **kwargs)
+        assert not payload.partials and other_routing == routing
+        np.testing.assert_array_equal(other, logits)
+    for fused in (True, False):
+        other_routing, other, payload = run_logits(model, POLICIES["complete"], fused=fused)
+        assert payload.partials  # device-local partial sums: a different summation order
+        assert other_routing == routing, "partial sums must not change routing"
+        np.testing.assert_allclose(other, logits, rtol=0, atol=REORDER_ATOL)
 
 
 def test_output_stationary_partial_sums_are_exercised_and_equivalent():
@@ -82,7 +111,7 @@ def test_output_stationary_partial_sums_are_exercised_and_equivalent():
     _, plain, plain_result = co_simulate(POLICIES["weight-stationary"], batch=3)
     assert result.mode_counts["output_stationary"] > 0
     assert any(len(key) == 3 and key[0] == "partial" for key in payload.partials)
-    np.testing.assert_allclose(np.stack(payload.logits), np.stack(plain.logits), rtol=1e-5, atol=1e-5)
+    np.testing.assert_allclose(np.stack(payload.logits), np.stack(plain.logits), rtol=0, atol=REORDER_ATOL)
     assert result.link_bytes["output"] < plain_result.link_bytes["output"]  # fewer tensors return
     assert result.token_latency_s == pytest.approx(plain_result.token_latency_s, rel=0.02)
 

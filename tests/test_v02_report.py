@@ -193,10 +193,11 @@ def test_workload_suite_reports_each_workload_type_separately():
 def test_numeric_verification_covers_three_dataflow_families():
     correct = report_v2.correctness()
     assert correct["all_ok"] and len(correct["runs"]) == 3
-    assert correct["fused_equals_unfused"]  # graph form must not change a single bit
+    # with the reduction order fixed, the graph form must not change a single bit
+    assert correct["fused_equals_unfused"]
     assert correct["max_rel_l2"] < load_json("hardware_gate")["numeric_rel_l2_max"]
-    # partial sums are added in a different order: equal within rounding, not bit for bit
-    assert 0 < correct["tensor_parallel_max_abs_diff"] < 2e-3 * correct["logit_scale"]
+    # partial sums and expert shards add in a different order: equal within rounding only
+    assert 0 <= correct["max_abs_diff_between_dataflows"] < 2e-3 * correct["logit_scale"]
     for run in correct["runs"]:
         assert run["routing_matches"] and run["tokens_match"]
         assert run["dependency_violations"] == 0 and run["accounting_violations"] == 0

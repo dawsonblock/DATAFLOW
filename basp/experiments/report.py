@@ -20,7 +20,7 @@ from basp.backends.virtual.runtime import RunResult
 from basp.core.capabilities import DeviceKind
 from basp.core.tensor import CompressionFormat, FormatTable
 from basp.core.topology import Topology
-from basp.dataflow.base import ALL_MODES, CachePolicy, ExecutionPolicy, PrefetchPolicy
+from basp.dataflow.base import ALL_MODES, CachePolicy, DataflowMode, ExecutionPolicy, PrefetchPolicy
 from basp.experiments.analytic import compare_paths, size_arithmetic
 from basp.experiments.configurations import Configuration, standard_configurations
 from basp.experiments.harness import build
@@ -274,7 +274,20 @@ def correctness_experiment(basp: Topology) -> dict[str, Any]:
             "accounting_violations": len(check_accounting(setup.system)), "ok": result.ok and numeric.ok,
         })  # fmt: skip
         logits.append(np.stack(payload.logits))
-    out["fused_equals_unfused"] = bool(np.array_equal(logits[0], logits[1]))
+    # Bit-identity is a property of the graph form only while the reduction order is fixed:
+    # device-local partial sums (output-stationary) reorder FP32 additions.
+    exact = []
+    for fused in (True, False):
+        policy = ExecutionPolicy("fixed", ALL_MODES - {DataflowMode.OUTPUT_STATIONARY},
+                                 cache=CachePolicy("benefit", (gpu,)))  # fmt: skip
+        setup = build(basp, spec, policy,
+                      lambda p, r: placement.place_modules(p, r, gpu, modules, policy="round_robin"),
+                      batch=3, head_shards=len(modules), fused=fused)  # fmt: skip
+        payload = NumericPayload(model, setup.program, model.initial_input(3))
+        setup.run(None, tokens=6, payload=payload)
+        exact.append(np.stack(payload.logits))
+    out["fused_equals_unfused"] = bool(np.array_equal(exact[0], exact[1]))
+    out["max_abs_diff_between_graphs"] = float(np.abs(logits[0] - logits[1]).max())
     rng = np.random.default_rng(0)
     sample = quantize_int4(rng.standard_normal((256, 4096)))
     out["gaussian_int4_entropy_bits"] = symbol_entropy_bits(sample)

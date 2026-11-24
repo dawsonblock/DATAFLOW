@@ -152,6 +152,7 @@ def evaluate_gate(
             "pass" if real_weights_verified else "not_evaluated", "measured",
         ))  # fmt: skip
     add(Criterion("Model quality", "no material degradation",
-                  "routing is never altered and only lossless-equivalent formats are exchanged",
+                  "the runtime never selects experts and exchanges only lossless-equivalent weight "
+                  "formats; dataflows differ only in FP32 summation order (rounding level)",
                   "pass", "by construction"))  # fmt: skip
     return decision

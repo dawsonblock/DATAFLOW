@@ -23,7 +23,7 @@ Regime: Qwen3-30B-A3B, single-user decoding, 12 GiB GPU
 | Four-module scaling efficiency | >= 70% | 72% from one to four modules (E Tensor-parallel on the 30B MoE, the best-scaling architecture) | pass | simulated, uncalibrated |
 | Scheduler overhead | <= 5% | 1.4% to 27.3% for 28 plan evaluations per batch at an assumed 50-1000 ns each; needs <= 183 ns per evaluation | not evaluated | estimated; no production scheduler exists |
 | Numerical correctness | relative error <= 0.002 | 4.5e-04 on a small random-weight model; real model weights not verified | not evaluated | measured |
-| Model quality | no material degradation | routing is never altered and only lossless-equivalent formats are exchanged | pass | by construction |
+| Model quality | no material degradation | the runtime never selects experts and exchanges only lossless-equivalent weight formats; dataflows differ only in FP32 summation order (rounding level) | pass | by construction |
 
 Regime: Llama-3.3-70B, single-user decoding, 12 GiB GPU (most favourable regime found among published model shapes)
 
@@ -36,7 +36,7 @@ Regime: Llama-3.3-70B, single-user decoding, 12 GiB GPU (most favourable regime 
 | Four-module scaling efficiency | >= 70% | 72% from one to four modules (E Tensor-parallel on the 30B MoE, the best-scaling architecture) | pass | simulated, uncalibrated |
 | Scheduler overhead | <= 5% | 1.4% to 27.3% for 28 plan evaluations per batch at an assumed 50-1000 ns each; needs <= 183 ns per evaluation | not evaluated | estimated; no production scheduler exists |
 | Numerical correctness | relative error <= 0.002 | 4.5e-04 on a small random-weight model; real model weights not verified | not evaluated | measured |
-| Model quality | no material degradation | routing is never altered and only lossless-equivalent formats are exchanged | pass | by construction |
+| Model quality | no material degradation | the runtime never selects experts and exchanges only lossless-equivalent weight formats; dataflows differ only in FP32 summation order (rounding level) | pass | by construction |
 
 Ratios compare the best module-based architecture with architecture A (conventional CPU/GPU with
 per-expert caching) at the pessimistic corner of every estimate. The thresholds are proposed
@@ -359,15 +359,20 @@ kernels following the scheduled plans, and compared with an independent float64 
 | adaptive hybrid, unfused graph | 4.45e-04 | True | True | 0 | 0 |
 | tensor-parallel with partial sums, no host in the loop | 4.45e-04 | True | True | 0 | 0 |
 
-Fused and unfused graphs give bit-identical logits: True. Tensor-parallel
-execution with partial sums differs from whole-expert execution by at most
-1.9e-04 on logits of magnitude 4.2 (a different
-FP32 summation order). Real model weights have not been run.
+With the reduction order fixed, fused and unfused graphs give bit-identical logits:
+True. Dataflows that accumulate partial sums on devices, or partition experts across
+modules, add the same FP32 terms in a different order: the three runs above differ from each other
+by at most 1.9e-04 on logits of magnitude 4.2, and select the same experts.
+Such differences are at rounding level but are not zero, and a reordered sum could in principle
+tip a near-tied routing decision; none was observed. Real model weights have not been run.
 
 ## 9. What v0.2 corrected in the v0.1 model
 
 * GPU kernels are batched (one launch for back-to-back experts): the conventional baseline is
   faster than v0.1 reported.
+* v0.1 claimed bit-identical logits under every policy. That holds only while the reduction order
+  is unchanged; partial sums accumulated on devices reorder FP32 additions, so those dataflows
+  agree within rounding (section 8). The v0.1 test passed for one model seed by luck.
 * The illustrative desktop's CPU arithmetic rate was raised from 30 to 80 GMAC/s so that CPU-side
   decoding is limited by memory bandwidth, as public llama.cpp figures suggest; the lower value
   roughly halved the conventional baseline for models that do not fit the GPU.
