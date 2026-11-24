@@ -61,6 +61,7 @@ class Scheduler:
         self._fast_compute = max(d.compute_rate for d in topology.devices.values())
         self._fast_mem = max(d.mem_bandwidth for d in topology.devices.values())
         self._best_cache: dict[tuple, float] = {}
+        self._energy_weight = policy.energy_weight_s_per_j
         self.stats: Counter = Counter()
         self.mode_counts: Counter = Counter()
         self.wall_s = 0.0
@@ -174,7 +175,7 @@ class Scheduler:
                 self.stats["evaluated"] += 1
                 if plan is None:
                     continue
-                key = (plan.finish, plan.link_bytes, index)
+                key = (plan.finish + self._energy_weight * plan.energy_j, plan.link_bytes, index)
                 if best is None or key < best[0]:
                     best = (key, choice, trial)
             if best is None:
@@ -185,7 +186,7 @@ class Scheduler:
 
     def _objective(self, order, assign, st: PlanState) -> tuple[float, float, float] | None:
         state = st.fork()
-        makespan = total = 0.0
+        makespan = total = energy = 0.0
         for op in order:
             plan = self.cost.resolve(op, assign[op.op_id], state)
             self.stats["evaluated"] += 1
@@ -193,7 +194,8 @@ class Scheduler:
                 return None
             makespan = max(makespan, plan.finish)
             total += plan.finish
-        return makespan, state.link_bytes, total
+            energy += plan.energy_j
+        return makespan + self._energy_weight * energy, state.link_bytes, total
 
     @staticmethod
     def _better(a: tuple[float, float, float], b: tuple[float, float, float]) -> bool:
@@ -211,6 +213,8 @@ class Scheduler:
         best = self._objective(order, assign, st)
         if best is None:
             return assign
+        spent_at_start = self.stats["evaluated"]
+        budget = self.policy.joint_budget
         for _ in range(self.policy.joint_rounds):
             improved = False
             for op in order:
@@ -218,6 +222,9 @@ class Scheduler:
                 for choice in options[op.op_id]:
                     if choice is current:
                         continue
+                    if self.stats["evaluated"] - spent_at_start + len(order) > budget:
+                        self.stats["joint_budget_exhausted"] += 1
+                        return assign
                     trial = dict(assign)
                     trial[op.op_id] = choice
                     score = self._objective(order, trial, st)

@@ -65,6 +65,7 @@ class CostModel:
         self.replicas = replicas
         self.compute_devices = compute_devices
         self.sync_s = topology.sync_latency_s
+        self._energy: dict[tuple, float] = {}
 
     # -- helpers ------------------------------------------------------------------
     def allowed(self, device: int, op: OpNode) -> bool:
@@ -105,6 +106,33 @@ class CostModel:
         if caps.can_consume(canonical) and self.formats.interchangeable(src_fmt, canonical):
             return canonical
         return src_fmt
+
+    # -- energy -------------------------------------------------------------------
+    def _joules_per_unit(self, key: tuple) -> float:
+        """Dynamic energy of one unit of work on a resource (same model as the energy report)."""
+        if key not in self._energy:
+            kind = key[0]
+            if kind == "compute":
+                value = self.topology.devices[key[1]].power.joules_per_mac
+            elif kind == "mem":
+                value = self.topology.devices[key[1]].power.joules_per_mem_byte
+            elif kind == "link":
+                value = self.topology.links[key[1]].joules_per_byte
+            else:
+                value = 0.0
+            self._energy[key] = value
+        return self._energy[key]
+
+    def kernel_energy(self, kernel: Kernel, *, sram_hit: bool = False) -> float:
+        phases = kernel.sram_hit_phases if sram_hit and kernel.sram_hit_phases else kernel.phases
+        return sum(work * self._joules_per_unit(key) for p in phases for key, work in p.demands)
+
+    def transfer_energy(self, tr: RTransfer) -> float:
+        per_byte = self._joules_per_unit(("mem", tr.src))
+        for hop in self.topology.route(tr.src, tr.dst):
+            per_byte += self._joules_per_unit(("link", hop.link, hop.forward))
+        written = tr.nbytes if tr.dst_bytes is None else tr.dst_bytes
+        return tr.nbytes * per_byte + written * self._joules_per_unit(("mem", tr.dst))
 
     # -- kernels ------------------------------------------------------------------
     def build_kernel(
@@ -184,8 +212,8 @@ class CostModel:
             if shard.macs:
                 hit[compute_key(d)] = float(shard.macs)
             hit_phases = (Phase(tuple(hit.items())),)
-        return Kernel(d, tuple(phases), float(shard.macs), dev.kernel_startup_s, sram_tensors,
-                      hit_phases)  # fmt: skip
+        return Kernel(d, tuple(phases), float(shard.macs), dev.kernel_startup_s,
+                      dev.warm_startup_s, sram_tensors, hit_phases)  # fmt: skip
 
     def local_time(self, op: OpNode, device: int) -> float | None:
         """Idle-system time of ``op`` on ``device`` if all weights were resident there.
@@ -334,8 +362,11 @@ class CostModel:
         group = op.attrs.get("reduce_group")
         reducer = bool(op.attrs.get("reducer"))
         multi = len(shard_choices) > 1
+        # tensor-parallel shards each produce a full-size partial output that is summed
+        partials_out = bool(op.attrs.get("partial_outputs"))
         link_before = st.link_bytes
         shards: list[RShard] = []
+        energy = 0.0
         finish = now
         critical = (0.0, 0.0, 0.0, 0.0)
         weight_wait = 0.0
@@ -350,17 +381,23 @@ class CostModel:
             t_in = now
 
             for tid in op.inputs:
-                partial = st.accum_of.get(tid) if reducer else None
-                if partial is not None:
-                    ready, contributors, _rows, nbytes = st.accum[partial]
-                    if partial[2] == d:
-                        t = ready
-                    else:
-                        t = self._ensure(partial, d, st, transfers, "output", nbytes=nbytes,
-                                         src=partial[2], ready=ready, after_ops=contributors)  # fmt: skip
-                else:
-                    t = self._ensure(tid, d, st, transfers, "activation",
-                                     nbytes=registry.spec(tid).nbytes, waits=waits)  # fmt: skip
+                partials = st.accum_of.get(tid, ()) if reducer else ()
+                if partials:
+                    # the input was folded into device-local partial sums: gather those instead
+                    for partial in partials:
+                        ready, contributors, _rows, nbytes = st.accum[partial]
+                        if partial[2] == d:
+                            t = ready
+                        else:
+                            t = self._ensure(partial, d, st, transfers, "output", nbytes=nbytes,
+                                             src=partial[2], ready=ready,
+                                             after_ops=contributors)  # fmt: skip
+                        if t is None:
+                            return None
+                        t_in = max(t_in, t)
+                    continue
+                t = self._ensure(tid, d, st, transfers, "activation",
+                                 nbytes=registry.spec(tid).nbytes, waits=waits)  # fmt: skip
                 if t is None:
                     return None
                 t_in = max(t_in, t)
@@ -408,11 +445,14 @@ class CostModel:
             kernel = self.build_kernel(op, sc, weights, use_sram=choice.use_sram)
             if kernel is None:
                 return None
-            t_start = max(t_in, st.device_free.get(d, now))
+            free = st.device_free.get(d)
+            t_start = t_in if free is None else max(t_in, free)
+            # back-to-back with the previous kernel on this device: one batched launch
+            warm = topo.devices[d].persistent or (free is not None and t_start == free)
             streamed = [(nbytes, src) for _, _, nbytes, src in weights if src is not None]
             sram_ids = [t for t, _ in kernel.sram_tensors]
             hit = bool(sram_ids) and st.sram_has(d, sram_ids)
-            duration = kernel_time(topo, kernel, sram_hit=hit)
+            duration = kernel_time(topo, kernel, sram_hit=hit, warm=warm)
             stream_wait = shared = 0.0
             for nbytes, src in streamed:
                 # a streamed kernel holds its links for as long as the weights flow
@@ -437,7 +477,7 @@ class CostModel:
             if not multi:
                 for tid in op.outputs:
                     st.add_arrival(tid, d, t_done)
-            if choice.accumulate and group is not None and not multi:
+            if choice.accumulate and group is not None and (not multi or partials_out):
                 partial_key = ("partial", group, d)
                 ready, contributors, rows, _ = st.accum.get(partial_key, (0.0, (), frozenset(), 0.0))
                 rows = rows | frozenset(op.attrs.get("rows", range(op.batch)))
@@ -445,10 +485,11 @@ class CostModel:
                 st.accum[partial_key] = (max(ready, t_done), contributors + (op.op_id,), rows,
                                          per_row * len(rows))  # fmt: skip
                 for tid in op.outputs:
-                    st.accum_of[tid] = partial_key
+                    if partial_key not in st.accum_of.get(tid, ()):
+                        st.accum_of[tid] = st.accum_of.get(tid, ()) + (partial_key,)
             elif op.output_device is not None and op.output_device != d:
                 for tid in op.outputs:
-                    nbytes = registry.spec(tid).nbytes * sc.fraction
+                    nbytes = registry.spec(tid).nbytes * (1.0 if partials_out else sc.fraction)
                     tr = self._transfer(tid, d, op.output_device, nbytes, st, "output", ready=t_done)
                     outputs.append(tr)
                     st.add_arrival(tid, op.output_device, tr.arrive)
@@ -459,6 +500,8 @@ class CostModel:
 
             shards.append(RShard(d, transfers, kernel, t_start, t_done, outputs, evict,
                                  tuple(local), tuple(transient), partial_key, hit, tuple(waits)))  # fmt: skip
+            energy += self.kernel_energy(kernel, sram_hit=hit)
+            energy += sum(self.transfer_energy(tr) for tr in (*transfers, *outputs))
             if t_out >= finish:
                 finish = t_out
                 critical = (t_start - t_in, t_in - now, duration, t_out - t_done)
@@ -466,4 +509,4 @@ class CostModel:
         estimate = PathEstimate(queue=critical[0], input=critical[1], kernel=critical[2],
                                 output=critical[3], sync=0.0)  # fmt: skip
         return ResolvedPlan(op, choice, shards, now, finish, estimate,
-                            st.link_bytes - link_before, weight_wait)  # fmt: skip
+                            st.link_bytes - link_before, weight_wait, energy)  # fmt: skip

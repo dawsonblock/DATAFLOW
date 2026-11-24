@@ -5,7 +5,13 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from basp.backends.virtual.runtime import RoutingSource, RunResult, Runtime, TraceRouting
+from basp.backends.virtual.runtime import (
+    RoutingSource,
+    RunResult,
+    Runtime,
+    StreamGroup,
+    TraceRouting,
+)
 from basp.backends.virtual.system import VirtualSystem
 from basp.compiler.lower import ModelProgram
 from basp.core.tensor import FormatTable
@@ -49,6 +55,24 @@ class Setup:
         )  # fmt: skip
         return runtime.run(max_events=max_events)
 
+    def run_concurrent(self, trace: RoutingTrace, *, streams: int, tokens: int,
+                       warmup_tokens: int = 0, stagger_s: float = 0.0, keep_log: bool = False,
+                       max_events: int | None = None) -> RunResult:  # fmt: skip
+        """Decode ``streams`` independent sequences at once (concurrent requests).
+
+        Stream ``i`` replays batch row ``i`` of ``trace``; the setup must have been
+        built with ``batch=1``.  Speculative prefetching is not used.
+        """
+        if streams > trace.batch:
+            raise ValueError(f"trace has {trace.batch} rows, cannot drive {streams} streams")
+        group = StreamGroup(
+            self.system, self.program, self.scheduler,
+            [TraceRouting(trace, row=i) for i in range(streams)], tokens=tokens,
+            warmup_tokens=warmup_tokens, stagger_s=stagger_s, predictor=self.predictor,
+            keep_log=keep_log,
+        )  # fmt: skip
+        return group.run(max_events=max_events)
+
 
 def build(
     topology: Topology,
@@ -60,6 +84,7 @@ def build(
     context_len: int = 0,
     max_new_tokens: int = 0,
     head_shards: int = 1,
+    expert_shards: int = 1,
     fused: bool = True,
     formats: FormatTable | None = None,
     prior: RoutingTrace | None = None,
@@ -73,7 +98,8 @@ def build(
     """
     registry = TensorRegistry(formats)
     program = ModelProgram(spec, registry, batch=batch, context_len=context_len,
-                           max_new_tokens=max_new_tokens, head_shards=head_shards, fused=fused)  # fmt: skip
+                           max_new_tokens=max_new_tokens, head_shards=head_shards,
+                           expert_shards=expert_shards, fused=fused)  # fmt: skip
     residency = ResidencyMap(registry, topology)
     placement = place(program, residency)
     predictor = ExpertPredictor(spec.n_layers, spec.n_experts)

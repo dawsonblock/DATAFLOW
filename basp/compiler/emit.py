@@ -58,7 +58,7 @@ class Emitter:
         """Forget per-step bookkeeping (temporaries of the previous step are gone)."""
         self._arrival: dict[tuple[Hashable, int], tuple[int, ...]] = {}
         self._partial_id: dict[Hashable, int] = {}
-        self._accum_key: dict[int, Hashable] = {}
+        self._accum_keys: dict[int, list[Hashable]] = {}  # output -> partial sums holding it
         self._exec: dict[int, list[int]] = {}
         self.partials: list[int] = []
 
@@ -142,9 +142,10 @@ class Emitter:
                     deps.append(loading)
             reads: list[tuple[int, int]] = []
             for tid in op.inputs:
-                key = self._accum_key.get(tid, tid) if reducer else tid
-                deps.extend(self._arrival.get((key, d), ()))
-                reads.append((self._tensor(key), d))
+                keys = self._accum_keys.get(tid, [tid]) if reducer else [tid]
+                for key in keys:
+                    deps.extend(self._arrival.get((key, d), ()))
+                    reads.append((self._tensor(key), d))
             for tid in shard.local_weights:
                 deps.extend(self._arrival.get((tid, d), ()))
                 reads.append((tid, d))
@@ -166,7 +167,9 @@ class Emitter:
                 partial = self._tensor(shard.partial)
                 writes = [partial]
                 for tid in op.outputs:
-                    self._accum_key[tid] = shard.partial
+                    held = self._accum_keys.setdefault(tid, [])
+                    if shard.partial not in held:
+                        held.append(shard.partial)
             opcode = Opcode.REDUCE if op.opcode is OpCode.REDUCE else Opcode.EXECUTE
             unique_reads = tuple(dict.fromkeys(reads))
             cmd = Command(
@@ -195,6 +198,22 @@ class Emitter:
                 ]
             result.final.extend(last)
         return result
+
+    def emit_broadcast(self, tensor: int, src: int, targets, after: list[int]) -> list[Emitted]:
+        """Stream ``tensor`` from ``src`` to every target as soon as ``after`` have completed."""
+        out: list[Emitted] = []
+        nbytes = self.registry.spec(tensor).nbytes
+        for dst in targets:
+            if (tensor, dst) in self._arrival:
+                continue
+            cmd = Command(
+                self.system.new_id(), Opcode.TRANSFER, dst, inputs=(tensor,), deps=tuple(after),
+                version=self.registry.version(tensor), src_device=src, arg0=int(nbytes),
+            )  # fmt: skip
+            out.append(Emitted(cmd, nbytes=nbytes, tag="activation", meta=("eager", tensor),
+                               reads=((tensor, src),)))  # fmt: skip
+            self._arrived(tensor, dst, cmd.op_id)
+        return out
 
     def emit_fill(self, action: ReplicaAction, eta: float) -> list[Emitted]:
         """Background replication or speculative prefetch of one tensor."""

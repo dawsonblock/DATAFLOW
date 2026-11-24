@@ -18,12 +18,16 @@ def candidates(op: OpNode, ctx: PlanContext) -> list[Choice]:
     if not op.partitionable or len(op.weights) < 2 or op.output_device is None:
         return []
     total = sum(ctx.registry.spec(w).n_weights for w in op.weights) or 1
+    # A device holding every shard runs the whole operation as a co-located plan; the
+    # distributed plan is the alternative that spreads the shards over the other holders.
+    complete = {d for d in ctx.devices_for(op) if ctx.weights_local(op, d)}
     load: dict[int, float] = {}
     assigned: dict[int, list[int]] = {}
     for w in op.weights:
         holders = [
             device for device, _ in ctx.st.sources(w)
-            if ctx.allowed(device, op) and ctx.consumable(w, device, device)
+            if device not in complete and ctx.allowed(device, op)
+            and ctx.consumable(w, device, device)
         ]  # fmt: skip
         if not holders:
             return []

@@ -16,6 +16,7 @@ from basp.compiler.lower import ModelProgram
 from basp.core.tensor import CompressionFormat
 from basp.memory.allocator import OutOfMemory
 from basp.memory.residency import ResidencyMap
+from basp.workloads.trace import RoutingTrace
 
 
 class PlacementError(RuntimeError):
@@ -55,7 +56,7 @@ def place_single(program: ModelProgram, residency: ResidencyMap, device: int) ->
     report = PlacementReport("single")
     for layer in range(program.spec.n_layers):
         _place_trunk(program, residency, report, layer, device)
-        for tensor in program.expert_w[layer]:
+        for tensor in program.layer_expert_tensors(layer):
             _place(residency, report, tensor, device)
     for tensor in program.head_w:
         _place(residency, report, tensor, device, pinned=True)
@@ -84,15 +85,9 @@ def place_gpu_host(
     for tensor in program.head_w:
         _place(residency, report, tensor, gpu, pinned=True)
     for layer in range(program.spec.n_layers):
-        for tensor in program.expert_w[layer]:
+        for tensor in program.layer_expert_tensors(layer):
             _place(residency, report, tensor, host, fmt=cold_format)
-    filled = 0
-    for layer, expert in prefill:
-        tensor = program.expert_w[layer][expert]
-        if residency.free_bytes(gpu) < residency.registry.spec(tensor).nbytes + 64:
-            break
-        _place(residency, report, tensor, gpu, owner=False)
-        filled += 1
+    filled = _prefill(program, residency, report, gpu, prefill)
     if prefill:
         report.notes.append(f"prefilled {filled} experts on the GPU")
     program.sample_device = gpu
@@ -115,7 +110,7 @@ def place_static_split(
     per_layer = [
         registry.spec(program.trunk_w[layer]).nbytes
         + (registry.spec(program.kv[layer]).nbytes if program.kv else 0)
-        + sum(registry.spec(t).nbytes for t in program.expert_w[layer])
+        + sum(registry.spec(t).nbytes for t in program.layer_expert_tensors(layer))
         + 64 * (spec.n_experts + 2)
         for layer in range(spec.n_layers)
     ]  # fmt: skip
@@ -132,7 +127,7 @@ def place_static_split(
     for layer in range(spec.n_layers):
         device = gpu if layer < n_gpu_layers else host
         _place_trunk(program, residency, report, layer, device)
-        for tensor in program.expert_w[layer]:
+        for tensor in program.layer_expert_tensors(layer):
             _place(residency, report, tensor, device)
     last = program.trunk_device[-1]
     head_bytes = sum(registry.spec(t).nbytes for t in program.head_w) + 64 * len(program.head_w)
@@ -143,65 +138,195 @@ def place_static_split(
     return report
 
 
+def coactivation(trace: RoutingTrace) -> np.ndarray:
+    """[layers, experts, experts] probability that two experts are selected in the same visit."""
+    counts = np.zeros((trace.n_layers, trace.n_experts, trace.n_experts))
+    visits = 0
+    for step in trace.steps:
+        for layer, routing in enumerate(step):
+            for row in routing.experts:
+                idx = np.asarray(row)
+                counts[layer][np.ix_(idx, idx)] += 1.0
+        visits += trace.batch
+    return counts / max(visits, 1)
+
+
+def _assign_experts(n_experts: int, modules: Sequence[int], policy: str, freq, co, copies: Sequence[int]):
+    """Devices for every expert of one layer: a list of device tuples, primary first."""
+    if policy == "round_robin" or freq is None:
+        primary = [modules[e % len(modules)] for e in range(n_experts)]
+        order = list(range(n_experts))
+    elif policy in ("balanced", "coactivation"):
+        order = sorted(range(n_experts), key=lambda e: (-freq[e], e))
+        primary = [modules[0]] * n_experts
+    else:
+        raise PlacementError(f"unknown expert distribution policy {policy!r}")
+    load = dict.fromkeys(modules, 0.0)
+    count = dict.fromkeys(modules, 0)
+    members: dict[int, list[int]] = {m: [] for m in modules}
+
+    def clash(e: int, m: int) -> float:
+        # expected number of experts already on m that are selected together with e
+        return float(co[e, members[m]].sum()) if co is not None and members[m] else 0.0
+
+    placed: list[tuple[int, ...]] = [()] * n_experts
+    for e in order:
+        if policy == "round_robin" or freq is None:
+            first = primary[e]
+        elif policy == "coactivation" and co is not None:
+            first = min(modules, key=lambda d: (clash(e, d), load[d], count[d], d))
+        else:
+            first = min(modules, key=lambda d: (load[d], count[d], d))
+        chosen = [first]
+        share = float(freq[e]) / copies[e] if freq is not None else 1.0 / copies[e]
+        for _ in range(copies[e] - 1):
+            rest = [m for m in modules if m not in chosen]
+            if not rest:
+                break
+            chosen.append(min(rest, key=lambda d: (clash(e, d), load[d], count[d], d)))
+        for m in chosen:
+            members[m].append(e)
+            load[m] += share
+            count[m] += 1
+        placed[e] = tuple(chosen)
+    return placed
+
+
 def place_modules(
+    program: ModelProgram,
+    residency: ResidencyMap,
+    trunk: int | Sequence[int],
+    modules: Sequence[int],
+    *,
+    policy: str = "balanced",
+    frequencies: np.ndarray | None = None,
+    coactivation_matrix: np.ndarray | None = None,
+    replicas: int = 1,
+    replicate_top: float = 1.0,
+    head: str = "auto",
+    head_on_modules: bool | None = None,
+    prefill: Sequence[tuple[int, int]] = (),
+    cold_format: CompressionFormat | None = None,
+) -> PlacementReport:
+    """Complete experts on compute-memory modules; trunk blocks on ``trunk``.
+
+    Expert distribution policies:
+
+    * ``round_robin`` -- expert ``e`` on module ``e mod M``.
+    * ``balanced`` -- experts in descending frequency to the least-loaded module.
+    * ``coactivation`` -- experts in descending frequency to the module where they
+      collide least with experts already placed there (experts that are selected
+      together should not share a module), then by load.
+
+    ``replicas`` copies of the hottest ``replicate_top`` share of each layer's
+    experts are placed on distinct modules, which lets the scheduler send each
+    selected expert to the less loaded of its holders.
+
+    ``trunk`` is one device for every layer or one device per layer.  ``head``
+    selects where the output projection lives: ``"modules"`` (row shards only),
+    ``"trunk"``, or ``"auto"``: shards on the modules *and* a full copy on the
+    trunk device when it fits, so the scheduler picks the location per token.
+    """
+    if not modules:
+        raise PlacementError("no modules to place experts on")
+    if replicas < 1 or not 0.0 <= replicate_top <= 1.0:
+        raise PlacementError("replicas must be >= 1 and replicate_top within [0, 1]")
+    if head_on_modules is not None:  # backwards-compatible spelling
+        head = "modules" if head_on_modules else "trunk"
+    spec = program.spec
+    trunks = [trunk] * spec.n_layers if isinstance(trunk, int) else list(trunk)
+    if len(trunks) != spec.n_layers:
+        raise PlacementError("need one trunk device or one per layer")
+    report = PlacementReport(f"modules/{policy}" + (f"/x{replicas}" if replicas > 1 else ""))
+    for layer in range(spec.n_layers):
+        _place_trunk(program, residency, report, layer, trunks[layer])
+    extra = 0
+    for layer in range(spec.n_layers):
+        freq = None if frequencies is None else frequencies[layer]
+        co = None if coactivation_matrix is None else coactivation_matrix[layer]
+        copies = [1] * spec.n_experts
+        if replicas > 1:
+            ranked = sorted(range(spec.n_experts),
+                            key=lambda e: (-(freq[e] if freq is not None else 0.0), e))  # fmt: skip
+            for e in ranked[: round(replicate_top * spec.n_experts)]:
+                copies[e] = min(replicas, len(modules))
+        placed = _assign_experts(spec.n_experts, modules, policy, freq, co, copies)
+        for e, parts in enumerate(program.expert_parts[layer]):
+            for i, device in enumerate(placed[e]):
+                for tensor in parts:
+                    _place(residency, report, tensor, device, owner=i == 0, fmt=cold_format)
+                extra += i > 0
+    if extra:
+        report.notes.append(f"{extra} expert replicas across modules")
+    _place_head(program, residency, report, trunks[-1], modules, head)
+    if prefill:
+        filled = _prefill(program, residency, report, trunks[0], prefill)
+        report.notes.append(f"prefilled {filled} experts on the trunk device")
+    program.sample_device = trunks[0]
+    return report
+
+
+def place_tensor_parallel(
     program: ModelProgram,
     residency: ResidencyMap,
     trunk: int,
     modules: Sequence[int],
     *,
-    policy: str = "balanced",
-    frequencies: np.ndarray | None = None,
-    head_on_modules: bool = True,
-    prefill: Sequence[tuple[int, int]] = (),
-    cold_format: CompressionFormat | None = None,
+    head: str = "auto",
 ) -> PlacementReport:
-    """Complete experts on compute-memory modules; trunk on ``trunk``.
+    """Every expert partitioned across all modules: shard ``j`` of each expert on module ``j``.
 
-    ``round_robin`` assigns expert ``e`` to module ``e mod M``.  ``balanced``
-    assigns the experts of each layer in descending expected frequency to the
-    module with the least expected load so far, so frequently co-selected
-    experts end up on different modules and can run concurrently.
+    Each module then holds an equal slice of every expert, so every selected
+    expert uses all modules at once and the load is balanced by construction.
+    The program must have been built with ``expert_shards == len(modules)``.
     """
-    if not modules:
-        raise PlacementError("no modules to place experts on")
-    spec = program.spec
-    report = PlacementReport(f"modules/{policy}")
-    for layer in range(spec.n_layers):
+    parts = len(program.shard_bounds)
+    if parts != len(modules):
+        raise PlacementError(f"program has {parts} expert shards for {len(modules)} modules")
+    report = PlacementReport("tensor_parallel")
+    for layer in range(program.spec.n_layers):
         _place_trunk(program, residency, report, layer, trunk)
-    for layer in range(spec.n_layers):
-        if policy == "round_robin" or frequencies is None:
-            target = [modules[e % len(modules)] for e in range(spec.n_experts)]
-        elif policy == "balanced":
-            load = {m: 0.0 for m in modules}
-            count = {m: 0 for m in modules}
-            target = [modules[0]] * spec.n_experts
-            order = sorted(range(spec.n_experts), key=lambda e: (-frequencies[layer][e], e))
-            for e in order:
-                m = min(modules, key=lambda d: (load[d], count[d], d))
-                target[e] = m
-                load[m] += float(frequencies[layer][e])
-                count[m] += 1
-        else:
-            raise PlacementError(f"unknown expert distribution policy {policy!r}")
-        for e, tensor in enumerate(program.expert_w[layer]):
-            _place(residency, report, tensor, target[e], fmt=cold_format)
-    if head_on_modules and len(program.head_w) > 1:
+        for shards in program.expert_parts[layer]:
+            for tensor, device in zip(shards, modules):
+                _place(residency, report, tensor, device)
+    _place_head(program, residency, report, trunk, modules, head)
+    program.sample_device = trunk
+    return report
+
+
+def _prefill(program: ModelProgram, residency: ResidencyMap, report: PlacementReport, device: int,
+             prefill: Sequence[tuple[int, int]]) -> int:  # fmt: skip
+    """Replicate whole experts onto ``device`` in priority order until it is full."""
+    registry = residency.registry
+    filled = 0
+    for layer, expert in prefill:
+        parts = program.expert_parts[layer][expert]
+        if all(residency.copy(t, device) is not None for t in parts):
+            continue
+        if residency.free_bytes(device) < sum(registry.spec(t).nbytes + 64 for t in parts):
+            break
+        for tensor in parts:
+            _place(residency, report, tensor, device, owner=False)
+        filled += 1
+    return filled
+
+
+def _place_head(program: ModelProgram, residency: ResidencyMap, report: PlacementReport, trunk: int,
+                modules: Sequence[int], head: str) -> None:  # fmt: skip
+    """Output projection: row shards on the modules, a full copy on the trunk device, or both."""
+    if head not in ("auto", "modules", "trunk"):
+        raise PlacementError(f"unknown head placement {head!r}")
+    if head != "trunk" and len(program.head_w) > 1:
         for i, tensor in enumerate(program.head_w):
             _place(residency, report, tensor, modules[i % len(modules)], pinned=True)
+        need = sum(residency.registry.spec(t).nbytes + 64 for t in program.head_w)
+        if head == "auto" and trunk not in modules and residency.free_bytes(trunk) >= need:
+            for tensor in program.head_w:
+                _place(residency, report, tensor, trunk, pinned=True, owner=False)
+            report.notes.append("output projection on the modules and on the trunk device")
     else:
         for tensor in program.head_w:
             _place(residency, report, tensor, trunk, pinned=True)
-    filled = 0
-    for layer, expert in prefill:
-        tensor = program.expert_w[layer][expert]
-        if residency.free_bytes(trunk) < residency.registry.spec(tensor).nbytes + 64:
-            break
-        _place(residency, report, tensor, trunk, owner=False)
-        filled += 1
-    if prefill:
-        report.notes.append(f"prefilled {filled} experts on the trunk device")
-    program.sample_device = trunk
-    return report
 
 
 def hottest_experts(frequencies: np.ndarray) -> list[tuple[int, int]]:

@@ -112,9 +112,33 @@ class ExecutionPolicy:
     modes: frozenset[DataflowMode] = ALL_MODES
     compute_devices: frozenset[int] | None = None  # None: any capable device
     joint_rounds: int = 2  # coordinate-descent passes after the greedy assignment
+    #: plan evaluations the refinement may spend on one batch (bounds scheduler work on
+    #: wide batches; the greedy assignment is kept once the budget is used up)
+    joint_budget: int = 4000
     cache: CachePolicy = field(default_factory=CachePolicy)
     prefetch: PrefetchPolicy | None = None
     decision_latency_s: float = 0.0  # modelled host time per scheduling decision
+    #: False: devices chain batches through dependency events alone -- no host round trip
+    #: and no scheduling decision between layers.  Only valid for static dataflows, where
+    #: every operation's location follows from placement.
+    host_in_loop: bool = True
+    #: stream each layer's hidden state to every device that may run its experts as soon
+    #: as it exists, so the transfer overlaps the routing decision
+    eager_activations: bool = False
+    #: seconds of completion time the scheduler will trade for one joule (0: time only)
+    energy_weight_s_per_j: float = 0.0
+
+    def __post_init__(self) -> None:
+        if not self.host_in_loop:
+            dynamic = {DataflowMode.ACTIVATION_STATIONARY, DataflowMode.STREAMING,
+                       DataflowMode.PREDICTIVE}  # fmt: skip
+            if self.cache.kind != "none" or self.prefetch is not None or self.modes & dynamic:
+                raise ValueError(
+                    "host_in_loop=False needs a static dataflow: no replica cache, no prefetch "
+                    "and no mode that moves weights"
+                )
+        if self.energy_weight_s_per_j < 0:
+            raise ValueError("energy_weight_s_per_j must be non-negative")
 
     def enabled(self, mode: DataflowMode) -> bool:
         return mode in self.modes
@@ -177,6 +201,7 @@ class ResolvedPlan:
     estimate: PathEstimate
     link_bytes: float = 0.0
     weight_wait: float = 0.0  # time spent waiting for synchronous weight movement
+    energy_j: float = 0.0  # dynamic energy of the plan (MACs and bytes moved)
 
     @property
     def devices(self) -> tuple[int, ...]:

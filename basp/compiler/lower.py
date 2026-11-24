@@ -9,11 +9,12 @@ pass merges each expert's chain (and each trunk block) into one operation.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from basp.compiler.fusion import fuse
 from basp.core.graph import Graph, OpCode, OpNode
 from basp.core.tensor import DType, TensorKind, TensorSpec, activation_bytes
+from basp.kernels.expert import shard_bounds
 from basp.memory.tensor_registry import TensorRegistry
 from basp.workloads.model import MoEModelSpec
 from basp.workloads.trace import RoutingStep
@@ -37,10 +38,13 @@ class ModelProgram:
         context_len: int = 0,
         max_new_tokens: int = 0,
         head_shards: int = 1,
+        expert_shards: int = 1,
         fused: bool = True,
     ) -> None:
-        if head_shards < 1:
-            raise ValueError("head_shards must be >= 1")
+        if head_shards < 1 or expert_shards < 1:
+            raise ValueError("head_shards and expert_shards must be >= 1")
+        if expert_shards > 1 and not fused:
+            raise ValueError("tensor-parallel experts need the fused expert operation")
         self.spec = spec
         self.registry = registry
         self.batch = batch
@@ -51,8 +55,11 @@ class ModelProgram:
         fmt = spec.weight_format
         self.trunk_w: list[int] = []
         self.kv: list[int] = []
-        self.expert_w: list[list[int]] = []
+        self.expert_w: list[list[int]] = []  # first (or only) tensor of each expert
+        self.expert_parts: list[list[tuple[int, ...]]] = []  # every tensor of each expert
         self.expert_of: dict[int, tuple[int, int]] = {}
+        #: ranges of the intermediate dimension held by each tensor-parallel shard
+        self.shard_bounds = shard_bounds(spec.expert_inter, expert_shards)
         max_ctx = context_len + max_new_tokens
         for layer in range(spec.n_layers):
             trunk = registry.add(
@@ -66,16 +73,22 @@ class ModelProgram:
                     max(batch * max_ctx * spec.kv_bytes_per_token_layer, 1),
                 )  # fmt: skip
                 self.kv.append(kv.tensor_id)
-            row = []
+            row, parts_row = [], []
             for expert in range(spec.n_experts):
-                t = registry.add(
-                    f"expert.{layer}.{expert}", TensorKind.EXPERT_WEIGHT, (spec.expert_params,),
-                    DType.BYTES, formats.weight_bytes(spec.expert_params, fmt), fmt=fmt,
-                    n_weights=spec.expert_params,
-                )  # fmt: skip
-                row.append(t.tensor_id)
-                self.expert_of[t.tensor_id] = (layer, expert)
+                parts = []
+                for j, (lo, hi) in enumerate(self.shard_bounds):
+                    n = 3 * spec.hidden * (hi - lo)
+                    suffix = f".p{j}" if expert_shards > 1 else ""
+                    t = registry.add(
+                        f"expert.{layer}.{expert}{suffix}", TensorKind.EXPERT_WEIGHT, (n,),
+                        DType.BYTES, formats.weight_bytes(n, fmt), fmt=fmt, n_weights=n,
+                    )  # fmt: skip
+                    parts.append(t.tensor_id)
+                    self.expert_of[t.tensor_id] = (layer, expert)
+                row.append(parts[0])
+                parts_row.append(tuple(parts))
             self.expert_w.append(row)
+            self.expert_parts.append(parts_row)
         self.head_w: list[int] = []
         if spec.vocab:
             rows = [spec.vocab // head_shards + (i < spec.vocab % head_shards) for i in range(head_shards)]
@@ -114,6 +127,10 @@ class ModelProgram:
         for op in ops:
             graph.add_op(op)
         return ops
+
+    def layer_expert_tensors(self, layer: int) -> list[int]:
+        """Every expert weight tensor of ``layer`` (all shards of all experts)."""
+        return [t for parts in self.expert_parts[layer] for t in parts]
 
     def temporaries(self, graph: Graph) -> list[int]:
         return [t for t, spec in graph.tensors.items() if spec.policy.temporary]
@@ -204,7 +221,8 @@ class ModelProgram:
             )
             n = len(rows)
             pre = f"s{step}.l{layer}.e{expert}"
-            w = self._weight(graph, self.expert_w[layer][expert])
+            parts = tuple(self._weight(graph, t) for t in self.expert_parts[layer][expert])
+            w = parts[0]
             attrs = {"layer": layer, "expert": expert, "rows": rows, "coeffs": coeffs}
             # Only the operation whose output feeds the reduction belongs to the reduce group.
             final = {**attrs, "reduce_group": group}
@@ -234,8 +252,14 @@ class ModelProgram:
             if self.fused:
                 for spec in specs:
                     self.registry.unregister(spec.tensor_id)
-                chain = [fuse(chain, op_id=self._op_id(), opcode=OpCode.EXPERT, name=pre,
-                              external_outputs={y}, attrs=final)]  # fmt: skip
+                fused = fuse(chain, op_id=self._op_id(), opcode=OpCode.EXPERT, name=pre,
+                             external_outputs={y}, attrs=final)  # fmt: skip
+                if len(parts) > 1:
+                    # Tensor-parallel: every shard computes a complete partial output from its
+                    # slice of the intermediate dimension; the outputs add up.
+                    fused = replace(fused, weights=parts, partitionable=True,
+                                    attrs={**fused.attrs, "partial_outputs": True})  # fmt: skip
+                chain = [fused]
             else:
                 for spec in specs:
                     graph.add_tensor(spec)
@@ -288,10 +312,13 @@ class ModelProgram:
                     for name in ("x", "y")
                 )  # fmt: skip
             x, y = self._probe_io
+            parts = self.expert_parts[layer][expert]
+            attrs = {"layer": layer, "expert": expert, "probe": True}
+            if len(parts) > 1:
+                attrs["partial_outputs"] = True
             self._probes[key] = OpNode(
-                0, OpCode.EXPERT, f"probe.l{layer}.e{expert}", inputs=(x,),
-                weights=(self.expert_w[layer][expert],), outputs=(y,), macs=s.expert_params,
-                output_device=self.trunk_device[layer],
-                attrs={"layer": layer, "expert": expert, "probe": True},
+                0, OpCode.EXPERT, f"probe.l{layer}.e{expert}", inputs=(x,), weights=parts,
+                outputs=(y,), macs=s.expert_params, output_device=self.trunk_device[layer],
+                partitionable=len(parts) > 1, attrs=attrs,
             )  # fmt: skip
         return self._probes[key]

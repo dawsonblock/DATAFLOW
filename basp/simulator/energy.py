@@ -1,7 +1,10 @@
 """Energy accounting from resource usage.
 
 Energy = static power x elapsed time + per-MAC, per-memory-byte and per-link-byte
-dynamic energy.  All coefficients come from the topology profile and are
+dynamic energy.  A device that declares a sleep power spends idle periods longer
+than its gating threshold in that state and pays a wake-up energy; the wake-up
+latency is not modelled (the device is assumed to be woken ahead of need), so
+gated energy figures are optimistic.  All coefficients come from the topology profile and are
 modelling assumptions until calibrated against measurements.
 """
 
@@ -21,16 +24,28 @@ class EnergyReport:
     memory_j: float = 0.0
     link_j: float = 0.0
     per_device_j: dict[str, float] = field(default_factory=dict)
+    gated_s: dict[str, float] = field(default_factory=dict)  # time each device spent gated
 
     @property
     def total_j(self) -> float:
         return self.static_j + self.compute_j + self.memory_j + self.link_j
 
 
-def energy_report(topology: Topology, resources: Mapping[tuple, Resource], elapsed_s: float) -> EnergyReport:
+def energy_report(
+    topology: Topology,
+    resources: Mapping[tuple, Resource],
+    elapsed_s: float,
+    gating: Mapping[int, tuple[float, int]] | None = None,
+) -> EnergyReport:
+    """Energy over ``elapsed_s``.  ``gating`` maps a device to (seconds gated, wake-ups)."""
     report = EnergyReport()
     for dev in topology.devices.values():
-        static = dev.power.idle_w * elapsed_s
+        gated_s, wakes = (gating or {}).get(dev.device_id, (0.0, 0))
+        gated_s = min(gated_s, elapsed_s) if dev.power.sleep_w is not None else 0.0
+        static = dev.power.idle_w * (elapsed_s - gated_s)
+        if gated_s:
+            static += dev.power.sleep_w * gated_s + dev.power.wake_j * wakes
+            report.gated_s[dev.name] = gated_s
         compute = memory = 0.0
         res = resources.get(("compute", dev.device_id))
         if res is not None:

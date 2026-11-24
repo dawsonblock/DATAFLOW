@@ -28,7 +28,11 @@ def applies(op: OpNode) -> bool:
 def transform(choices: list[Choice], op: OpNode, ctx: PlanContext) -> list[Choice]:
     if not applies(op):
         return choices
+    # A sharded plan can accumulate only if every shard yields a summable partial output.
+    summable = bool(op.attrs.get("partial_outputs"))
     return [
-        replace(c, accumulate=True) if len(c.shards) == 1 and not c.follow_inputs else c
+        replace(c, accumulate=True)
+        if (len(c.shards) == 1 or summable) and not c.follow_inputs
+        else c
         for c in choices
     ]

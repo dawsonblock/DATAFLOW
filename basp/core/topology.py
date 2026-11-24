@@ -24,6 +24,11 @@ class PowerSpec:
     idle_w: float = 0.0
     joules_per_mac: float = 0.0
     joules_per_mem_byte: float = 0.0
+    #: power drawn while gated; ``None`` means the device cannot be power-gated
+    sleep_w: float | None = None
+    #: an idle period longer than this is spent gated (beyond the threshold itself)
+    gate_after_s: float = 1e-3
+    wake_j: float = 0.0  # energy of one wake-up
 
 
 @dataclass(frozen=True)
@@ -37,6 +42,11 @@ class DeviceSpec:
     caps: DeviceCapabilities = NO_COMPUTE
     sram_bytes: int = 0
     kernel_startup_s: float = 0.0
+    #: start-up of a kernel that begins the instant the previous one ended (batched launch);
+    #: ``None`` means every kernel pays the full start-up
+    warm_startup_s: float | None = None
+    #: kernels stay resident (persistent operators): every start is a warm start
+    persistent: bool = False
     queue_depth: int = 64
     power: PowerSpec = field(default_factory=PowerSpec)
 
@@ -232,6 +242,8 @@ def _device_to_dict(dev: DeviceSpec) -> dict[str, Any]:
         "compute_rate": dev.compute_rate,
         "sram_bytes": dev.sram_bytes,
         "kernel_startup_s": dev.kernel_startup_s,
+        "warm_startup_s": dev.warm_startup_s,
+        "persistent": dev.persistent,
         "queue_depth": dev.queue_depth,
         "opcodes": "all" if caps.opcodes == ALL_OPCODES else sorted(o.name for o in caps.opcodes),
         "decode_rate": {
@@ -244,6 +256,9 @@ def _device_to_dict(dev: DeviceSpec) -> dict[str, Any]:
             "idle_w": dev.power.idle_w,
             "joules_per_mac": dev.power.joules_per_mac,
             "joules_per_mem_byte": dev.power.joules_per_mem_byte,
+            "sleep_w": dev.power.sleep_w,
+            "gate_after_s": dev.power.gate_after_s,
+            "wake_j": dev.power.wake_j,
         },
     }
 
@@ -268,10 +283,15 @@ def _device_from_dict(device_id: int, d: Mapping[str, Any]) -> DeviceSpec:
         caps=caps,
         sram_bytes=int(d.get("sram_bytes", 0)),
         kernel_startup_s=float(d.get("kernel_startup_s", 0.0)),
+        warm_startup_s=None if d.get("warm_startup_s") is None else float(d["warm_startup_s"]),
+        persistent=bool(d.get("persistent", False)),
         queue_depth=int(d.get("queue_depth", 64)),
         power=PowerSpec(
             idle_w=float(power.get("idle_w", 0.0)),
             joules_per_mac=float(power.get("joules_per_mac", 0.0)),
             joules_per_mem_byte=float(power.get("joules_per_mem_byte", 0.0)),
+            sleep_w=None if power.get("sleep_w") is None else float(power["sleep_w"]),
+            gate_after_s=float(power.get("gate_after_s", 1e-3)),
+            wake_j=float(power.get("wake_j", 0.0)),
         ),
     )

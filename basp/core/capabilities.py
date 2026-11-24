@@ -16,6 +16,7 @@ class DeviceKind(enum.IntEnum):
     GPU = 2
     NEAR_MEMORY = 3
     STORAGE = 4
+    SWITCH = 5  # routing-only node: a fabric switch or a module's internal hub
 
 
 ALL_OPCODES = frozenset(OpCode)

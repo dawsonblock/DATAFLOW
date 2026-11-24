@@ -259,6 +259,9 @@ class VirtualSystem:
         device_free = {
             d: now + ex.backlog_s() for d, ex in self.executors.items() if ex.queue_length
         }
+        for d, ex in self.executors.items():
+            if d not in device_free and ex.last_end == now:
+                device_free[d] = now  # just finished: a kernel issued now joins its launch
         link_free = {
             key: now + queued / self.interconnect.link_res[key].capacity
             for key, queued in self.interconnect.queued_by_direction().items() if queued > 0

@@ -50,10 +50,12 @@ class Configuration:
     head_shards: int = 1
     baseline: str | None = None  # configuration this one is meant to be compared with
     formats: FormatTable | None = None
+    expert_shards: int = 1  # tensor-parallel shards per expert
 
     def build(self, spec: MoEModelSpec, prior: RoutingTrace | None, **kwargs) -> Setup:
         return build(self.topology, spec, self.policy, self.place, head_shards=self.head_shards,
-                     formats=self.formats, prior=prior, **kwargs)  # fmt: skip
+                     expert_shards=self.expert_shards, formats=self.formats, prior=prior,
+                     **kwargs)  # fmt: skip
 
 
 def _one(topology: Topology, kind: DeviceKind) -> int:

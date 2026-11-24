@@ -29,10 +29,21 @@ class MoEModelSpec:
     vocab: int = 0
     tied_embeddings: bool = False
     weight_format: CompressionFormat = CompressionFormat.INT4
+    #: experts that every token uses in addition to the routed ones (part of the trunk block)
+    n_shared_experts: int = 0
+    #: attention parameters per layer when the architecture is not plain QKVO projections
+    attn_params_override: int | None = None
+    #: provenance of the shape: "published config", "representative" or "hypothetical"
+    source: str = "representative"
 
     def __post_init__(self) -> None:
         if not 0 < self.top_k <= self.n_experts:
             raise ValueError("top_k must be in (0, n_experts]")
+
+    @property
+    def dense(self) -> bool:
+        """A dense transformer: one feed-forward block per layer, always used."""
+        return self.n_experts == 1
 
     @property
     def expert_params(self) -> int:
@@ -42,12 +53,19 @@ class MoEModelSpec:
     @property
     def attn_params(self) -> int:
         """Query, key, value and output projections of one layer."""
+        if self.attn_params_override is not None:
+            return self.attn_params_override
         proj = self.hidden * self.head_dim * (self.n_heads + 2 * self.n_kv_heads)
         return proj + self.n_heads * self.head_dim * self.hidden
 
     @property
     def router_params(self) -> int:
-        return self.n_experts * self.hidden
+        return 0 if self.dense else self.n_experts * self.hidden
+
+    @property
+    def shared_params(self) -> int:
+        """Always-active experts of one layer."""
+        return self.n_shared_experts * self.expert_params
 
     @property
     def norm_params(self) -> int:
@@ -55,8 +73,8 @@ class MoEModelSpec:
 
     @property
     def trunk_params(self) -> int:
-        """Non-expert parameters of one layer."""
-        return self.attn_params + self.router_params + self.norm_params
+        """Parameters of one layer that every token uses (everything but routed experts)."""
+        return self.attn_params + self.router_params + self.norm_params + self.shared_params
 
     @property
     def embed_params(self) -> int:
@@ -88,6 +106,9 @@ class MoEModelSpec:
         """Projection MACs plus score and value mixing over the cached context."""
         return self.attn_params + 2 * self.n_heads * self.head_dim * context_len
 
+    def bytes_at(self, bits_per_weight: float = 4.5) -> float:
+        return self.total_params * bits_per_weight / 8.0
+
 
 QWEN3_30B_A3B = MoEModelSpec(
     name="Qwen3-30B-A3B",
@@ -100,6 +121,7 @@ QWEN3_30B_A3B = MoEModelSpec(
     n_kv_heads=4,
     head_dim=128,
     vocab=151936,
+    source="published config",
 )
 
 

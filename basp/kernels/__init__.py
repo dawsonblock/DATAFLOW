@@ -6,7 +6,14 @@ weight format (4.5 bits/weight), ``matvec`` the fused streaming decode->MAC kern
 """
 
 from . import reference
-from .expert import QuantizedExpert, moe_combine, run_expert, silu_fp32
+from .expert import (
+    QuantizedExpert,
+    moe_combine,
+    run_expert,
+    shard_bounds,
+    silu_fp32,
+    split_expert,
+)
 from .int4 import (
     GROUP_SIZE,
     Int4Tensor,
@@ -35,7 +42,9 @@ __all__ = [
     "quantize_int4",
     "reference",
     "run_expert",
+    "shard_bounds",
     "silu_fp32",
+    "split_expert",
     "symbol_entropy_bits",
     "unpack_nibbles",
 ]

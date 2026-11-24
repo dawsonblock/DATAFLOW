@@ -58,6 +58,8 @@ class Kernel:
     phases: tuple[Phase, ...]
     macs: float = 0.0
     startup_s: float = 0.0
+    #: start-up when the kernel begins back-to-back with the previous one (``None``: same as cold)
+    warm_startup_s: float | None = None
     #: (tensor, bytes) pairs kept in the device SRAM tile cache (row-stationary mode)
     sram_tensors: tuple[tuple[Hashable, int], ...] = ()
     #: phases used instead of ``phases`` when every SRAM tensor is already cached
@@ -85,10 +87,19 @@ def phase_time(topology: Topology, phase: Phase) -> float:
     return phase.delay_s + longest
 
 
-def kernel_time(topology: Topology, kernel: Kernel, *, sram_hit: bool = False) -> float:
-    """Uncontended duration of ``kernel`` (the roofline estimate)."""
+def startup_time(kernel: Kernel, warm: bool) -> float:
+    return kernel.warm_startup_s if warm and kernel.warm_startup_s is not None else kernel.startup_s
+
+
+def kernel_time(topology: Topology, kernel: Kernel, *, sram_hit: bool = False,
+                warm: bool = False) -> float:  # fmt: skip
+    """Uncontended duration of ``kernel`` (the roofline estimate).
+
+    ``warm`` selects the batched start-up: the kernel starts the instant the
+    previous kernel on its device ended, or the device keeps its kernels resident.
+    """
     phases = kernel.sram_hit_phases if sram_hit and kernel.sram_hit_phases is not None else kernel.phases
-    return kernel.startup_s + sum(phase_time(topology, p) for p in phases)
+    return startup_time(kernel, warm) + sum(phase_time(topology, p) for p in phases)
 
 
 class KernelJob:
@@ -145,6 +156,21 @@ class DeviceExecutor:
         self.busy_time = 0.0
         self.wait_time = 0.0
         self.max_queue = 0
+        self.last_end: float | None = None  # when the previous kernel ended
+        self.warm_starts = 0
+        self._gated_s = 0.0
+        self.wakes = 0
+
+    def gated_seconds(self, now: float) -> float:
+        """Seconds spent power-gated so far, including the idle period still running."""
+        return self._gated_s + (self._gated_gap(now) if self._running is None else 0.0)
+
+    def _gated_gap(self, now: float) -> float:
+        power = self.device.power
+        if power.sleep_w is None or self.device.persistent:
+            return 0.0
+        idle_since = self.last_end if self.last_end is not None else 0.0
+        return max(now - idle_since - power.gate_after_s, 0.0)
 
     def submit(self, kernel: Kernel, on_done, *, on_start=None, tag: str = "kernel") -> KernelJob:
         """Queue a kernel.  ``on_start()`` may return ``False`` to abort the job."""
@@ -204,7 +230,16 @@ class DeviceExecutor:
             phases = kernel.phases
             if job.sram_hit and kernel.sram_hit_phases is not None:
                 phases = kernel.sram_hit_phases
-            job.event = self.sim.after(kernel.startup_s, self._run_phase, job, phases, 0)
+            # A kernel that starts the instant the previous one ended joins its launch.
+            warm = self.device.persistent or job.started == self.last_end
+            if warm:
+                self.warm_starts += 1
+            else:
+                gated = self._gated_gap(job.started)
+                if gated > 0.0:
+                    self._gated_s += gated
+                    self.wakes += 1
+            job.event = self.sim.after(startup_time(kernel, warm), self._run_phase, job, phases, 0)
 
     def _run_phase(self, job: KernelJob, phases: tuple[Phase, ...], index: int) -> None:
         job.event = None
@@ -243,6 +278,7 @@ class DeviceExecutor:
         job.flow = None
         if job.started is not None:
             self.busy_time += job.finished - job.started
+            self.last_end = job.finished
         if self._running is job:
             self._running = None
             self.sim.after(0.0, self._next)

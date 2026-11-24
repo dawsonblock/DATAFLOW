@@ -8,6 +8,7 @@ activation function and the weighted reduction are FP32.
 
 from __future__ import annotations
 
+import itertools
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -77,3 +78,41 @@ def moe_combine(outputs: Sequence, coeffs: Sequence[float]) -> np.ndarray:
     for out, coeff in zip(outputs, coeffs):
         acc += np.float32(coeff) * np.asarray(out, dtype=np.float32)
     return acc
+
+
+def shard_bounds(intermediate: int, parts: int, group_size: int = GROUP_SIZE) -> tuple[tuple[int, int], ...]:
+    """Contiguous ranges of the intermediate dimension for ``parts`` shards.
+
+    Boundaries fall on quantisation-group boundaries whenever the dimension
+    allows, so each shard of the down projection keeps whole scale groups.
+    """
+    if not 1 <= parts <= intermediate:
+        raise ValueError("parts must be between 1 and the intermediate dimension")
+    step = group_size if intermediate >= parts * group_size else 1
+    units = intermediate // step
+    cuts = [round(i * units / parts) * step for i in range(parts)] + [intermediate]
+    if len(set(cuts)) != len(cuts):
+        raise ValueError(f"cannot split {intermediate} into {parts} non-empty shards")
+    return tuple(itertools.pairwise(cuts))
+
+
+def _column_slice(t: Int4Tensor, start: int, stop: int) -> Int4Tensor:
+    if start % t.group_size or (stop % t.group_size and stop != t.cols):
+        raise ValueError("column shards must start and end on quantisation-group boundaries")
+    groups = slice(start // t.group_size, -(-stop // t.group_size))
+    nibbles = slice(start // 2, (groups.stop * t.group_size) // 2)
+    return Int4Tensor(t.packed[:, nibbles], t.scales[:, groups], t.rows, stop - start, t.group_size)
+
+
+def split_expert(expert: QuantizedExpert, bounds) -> list[QuantizedExpert]:
+    """Tensor-parallel shards of an expert over ranges of its intermediate dimension.
+
+    Shard ``j`` holds rows ``bounds[j]`` of the gate and up projections and the
+    matching columns of the down projection, so it computes a complete partial
+    output on its own; the expert's output is the sum of the shard outputs.
+    """
+    return [
+        QuantizedExpert(expert.gate.row_slice(a, b), expert.up.row_slice(a, b),
+                        _column_slice(expert.down, a, b))
+        for a, b in bounds
+    ]  # fmt: skip

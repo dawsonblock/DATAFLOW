@@ -107,7 +107,7 @@ class PlanState:
         self.sram_tentative: dict[int, frozenset] = {}
         self.sram_actual = sram_actual or {}
         self.accum: dict[Hashable, tuple[float, tuple[int, ...], frozenset, float]] = {}
-        self.accum_of: dict[int, Hashable] = {}
+        self.accum_of: dict[int, tuple[Hashable, ...]] = {}  # output -> partial sums holding it
         self.pending_eta = pending_eta or {}
         self.locked: frozenset[tuple[int, int]] = frozenset()
         self.link_bytes = 0.0

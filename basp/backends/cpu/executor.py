@@ -16,7 +16,7 @@ import numpy as np
 from basp.compiler.lower import ModelProgram
 from basp.core.graph import OpNode
 from basp.dataflow.base import ResolvedPlan
-from basp.kernels import matmul_int4, reference, run_expert, silu_fp32
+from basp.kernels import matmul_int4, reference, run_expert, silu_fp32, split_expert
 from basp.workloads.tiny import TinyModel
 from basp.workloads.trace import RoutingStep
 
@@ -37,7 +37,7 @@ class NumericPayload:
         self.inputs: list[np.ndarray] = []
         self.values: dict[int, np.ndarray] = {}
         self.partials: dict[tuple, np.ndarray] = {}
-        self._accumulated: dict[int, tuple] = {}
+        self._accumulated: dict[int, list] = {}
         self._producer_attrs: dict[int, dict] = {}
         self.logits: list[np.ndarray] = []
         self.tokens: list[np.ndarray] = []
@@ -113,23 +113,53 @@ class NumericPayload:
     def _expert(self, op: OpNode):
         return self.model.experts[op.attrs["layer"]][op.attrs["expert"]]
 
+    def _fold(self, op: OpNode, key, y: np.ndarray) -> None:
+        """Fold ``coeff * y`` into the device-local partial sum ``key``."""
+        rows = list(op.attrs["rows"])
+        partial = self.partials.setdefault(
+            key, np.zeros((self.program.batch, self.model.spec.hidden), dtype=np.float32)
+        )
+        coeffs = np.asarray(op.attrs["coeffs"], dtype=np.float32)[:, None]
+        partial[rows] += coeffs * y
+        held = self._accumulated.setdefault(op.outputs[0], [])
+        if key not in held:
+            held.append(key)
+
     def _emit_expert_output(self, op: OpNode, plan: ResolvedPlan, y: np.ndarray) -> None:
         """Store an expert output, or fold it into the device-local partial sum."""
         shard = plan.shards[0]
         if shard.partial is None:
             self.values[op.outputs[0]] = y
-            return
-        rows = list(op.attrs["rows"])
-        partial = self.partials.setdefault(
-            shard.partial, np.zeros((self.program.batch, self.model.spec.hidden), dtype=np.float32)
-        )
-        coeffs = np.asarray(op.attrs["coeffs"], dtype=np.float32)[:, None]
-        partial[rows] += coeffs * y
-        self._accumulated[op.outputs[0]] = shard.partial
+        else:
+            self._fold(op, shard.partial, y)
 
     def _op_expert(self, op: OpNode, plan: ResolvedPlan) -> None:
         h = self._get(op.inputs[0], op.name)[list(op.attrs["rows"])]
-        self._emit_expert_output(op, plan, run_expert(self._expert(op), h, tile_rows=self.tile_rows))
+        if len(op.weights) == 1:
+            y = run_expert(self._expert(op), h, tile_rows=self.tile_rows)
+            self._emit_expert_output(op, plan, y)
+            return
+        # Tensor-parallel expert: every plan shard computes the partial outputs of the weight
+        # shards it holds; the expert output is their sum.
+        parts = dict(zip(op.weights, split_expert(self._expert(op), self.program.shard_bounds)))
+        total = None
+        covered = 0
+        for executed, chosen in zip(plan.shards, plan.choice.shards):
+            y = None
+            for tensor in chosen.weights:
+                piece = run_expert(parts[tensor], h, tile_rows=self.tile_rows)
+                y = piece if y is None else y + piece
+                covered += 1
+            if executed.partial is not None:
+                self._fold(op, executed.partial, y)
+            else:
+                total = y if total is None else total + y
+        if covered != len(op.weights):
+            raise NumericError(f"{op.name}: plan covers {covered} of {len(op.weights)} shards")
+        if total is not None:
+            if op.outputs[0] in self._accumulated:
+                raise NumericError(f"{op.name}: output is both stored and accumulated")
+            self.values[op.outputs[0]] = total
 
     def _op_matvec(self, op: OpNode, plan: ResolvedPlan) -> None:
         if op.attrs.get("head"):
@@ -159,11 +189,12 @@ class NumericPayload:
         for tensor in op.inputs:
             if tensor == resid:
                 continue
-            key = self._accumulated.get(tensor)
-            if key is not None:
-                if key not in folded:
-                    folded.add(key)
-                    out += self.partials[key]
+            keys = self._accumulated.get(tensor)
+            if keys:
+                for key in keys:
+                    if key not in folded:
+                        folded.add(key)
+                        out += self.partials[key]
                 continue
             attrs = self._producer_attrs.get(tensor)
             if attrs is None:
