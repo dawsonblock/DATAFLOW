@@ -13,7 +13,10 @@ One command for the whole procedure in ``docs/calibration.md``:
 3. runs every planned llama-bench configuration, appending to
    ``evidence/<machine>/measurements.json`` after each one.  A configuration that fails (for
    example: does not fit GPU memory) is recorded in ``runs.json`` and the plan continues.
-   Re-running resumes: configurations already recorded are skipped;
+   Re-running resumes: configurations already recorded with the same repetitions, the same
+   llama-bench executable and the same model weights (full-content SHA-256) are skipped; a
+   rebuilt executable or changed weights re-runs them, and the older measurements are then
+   excluded from fitting and scoring (``identity.json`` records the current identities);
 4. records the machine (CPU, GPU, driver, memory, llama.cpp build) in ``environment.json``;
 5. fits the machine's profile on the calibration split only and scores the validation split
    (``calibration.json``, ``profile_fitted.json``).  With ``--update-profile`` the fitted
@@ -39,36 +42,29 @@ from pathlib import Path
 from typing import Any
 
 from basp.calibration import MeasurementSet
+from basp.calibration.plan import plan_runs
 from basp.core.topology import Topology
-from basp.evidence import REPO_DIR, environment, git_state, sha256_file
-from basp.experiments.calibrate import fit_profile, score
+from basp.evidence import (
+    REPO_DIR,
+    environment,
+    file_identity,
+    git_state,
+    profile_identity,
+    sha256_file,
+)
+from basp.experiments.calibrate import fit_profile, score, staleness
 from basp.experiments.profiles import load_json
 from benchmarks.run_llama_bench import BenchModel, resolve_model, run_one
 
 PLAN = REPO_DIR / "configs" / "calibration_plan.json"
 
 
-def plan_runs(plan: dict[str, Any], machine: str) -> list[dict[str, Any]]:
-    """Every planned configuration for ``machine``, one dictionary per llama-bench invocation."""
-    if machine not in plan["machines"]:
-        raise SystemExit(f"machine {machine!r} is not in the plan; known: {sorted(plan['machines'])}")
-    defaults = plan.get("defaults", {})
-    out = []
-    for entry in plan["machines"][machine]["runs"]:
-        if entry["split"] not in ("calibration", "validation"):
-            raise SystemExit(f"plan entry {entry} has no valid split")
-        for ngl in entry["ngl"]:
-            for depth in entry.get("depth", [0]):
-                for cmoe in entry.get("n_cpu_moe", [0]):
-                    out.append({"split": entry["split"], "model": entry["model"], "ngl": ngl, "depth": depth,
-                                "n_cpu_moe": cmoe, "repetitions": entry.get("repetitions", defaults.get("repetitions", 3)),
-                                "n_prompt": entry.get("n_prompt", defaults.get("n_prompt")),
-                                "n_gen": entry.get("n_gen", defaults.get("n_gen"))})  # fmt: skip
-    return out
-
-
-def run_key(run: dict[str, Any]) -> tuple:
-    return (run["split"], run["model"], run["ngl"], run["depth"], run["n_cpu_moe"], run["n_prompt"], run["n_gen"])
+def run_key(run: dict[str, Any], identity: dict[str, Any] | None = None) -> tuple:
+    """What makes two runs the same run: the planned configuration, its repetitions, and the
+    exact executable and model weights that execute it."""
+    identity = identity or {}
+    return (run["split"], run["model"], run["ngl"], run["depth"], run["n_cpu_moe"], run["n_prompt"], run["n_gen"],
+            run["repetitions"], identity.get("executable_sha256"), (identity.get("models") or {}).get(run["model"]))  # fmt: skip
 
 
 def _command(args: list[str]) -> str | None:
@@ -130,18 +126,23 @@ def fit_and_score(evidence: Path, machine: str, profile_name: str) -> dict[str, 
     """Fit on the calibration split, score the validation split; ``profile_name`` is a configs/
     name or a path (e.g. a prior seeded by ``benchmarks.profile_hardware``)."""
     measurements = MeasurementSet.load(evidence / "measurements.json")
+    identity_file = evidence / "identity.json"
+    stale = staleness({machine: json.loads(identity_file.read_text())} if identity_file.exists() else {})
     own = [m for m in measurements if m.machine == machine]
+    current = [m for m in own if stale(m) is None]
     thresholds = load_json("hardware_gate")
     prior = load_json(profile_name)
     limits = {"median_max": thresholds["calibration_median_max"], "p95_max": thresholds["calibration_p95_max"],
-              "min_validation": thresholds["min_validation_measurements"]}  # fmt: skip
+              "min_validation": thresholds["min_validation_measurements"], "exclude": stale}  # fmt: skip
     before = score(MeasurementSet(own), {machine: Topology.from_dict(prior)}, **limits)
-    summary: dict[str, Any] = {"prior_profile": str(profile_name), "prior": before.to_json()}
-    if any(m.split == "calibration" for m in own):
-        fit = fit_profile(own, machine, prior)
+    summary: dict[str, Any] = {"prior_profile": str(profile_name), "prior_profile_sha": profile_identity(prior),
+                               "prior": before.to_json(), "excluded_stale": len(own) - len(current)}  # fmt: skip
+    if any(m.split == "calibration" for m in current):
+        fit = fit_profile(current, machine, prior)
         after = score(MeasurementSet(own), {machine: Topology.from_dict(fit.profile)}, **limits)
         (evidence / "profile_fitted.json").write_text(json.dumps(fit.profile, indent=1) + "\n")
-        summary.update(fitted=after.to_json(), scales=fit.scales, fitted_from=fit.used)
+        summary.update(fitted=after.to_json(), scales=fit.scales, fitted_from=fit.used,
+                       fitted_profile_sha=profile_identity(fit.profile))  # fmt: skip
     (evidence / "calibration.json").write_text(json.dumps(summary, indent=1, default=float) + "\n")
     return summary
 
@@ -185,14 +186,19 @@ def main(argv: list[str] | None = None) -> int:
         overrides = dict(item.split("=", 1) for item in args.model)
         models = find_models(plan, runs, args.models_dir, overrides, check_shape=not args.no_shape_check)
         (evidence / "environment.json").write_text(json.dumps(machine_facts(binary), indent=1) + "\n")
+        identity = {"executable": file_identity(binary), "executable_sha256": file_identity(binary)["sha256"],
+                    "models": {name: m.fingerprint.get("sha256") for name, m in sorted(models.items())},
+                    "plan_sha256": sha256_file(args.plan)}  # fmt: skip
+        (evidence / "identity.json").write_text(json.dumps(identity, indent=1) + "\n")
         out = evidence / "measurements.json"
         log_path = evidence / "runs.json"
         target = MeasurementSet.load(out) if out.exists() else MeasurementSet()
         log = json.loads(log_path.read_text()) if log_path.exists() else []
         done = {tuple(entry["key"]) for entry in log}
-        provenance = {"plan_version": plan["version"], "plan_sha256": sha256_file(args.plan)}
+        provenance = {"plan_version": plan["version"], "plan_sha256": sha256_file(args.plan),
+                      "executable_sha256": identity["executable_sha256"]}  # fmt: skip
         for i, run in enumerate(runs, 1):
-            key = run_key(run)
+            key = run_key(run, identity)
             if key in done:
                 continue
             print(f"[{i}/{len(runs)}] ", end="")
@@ -204,8 +210,10 @@ def main(argv: list[str] | None = None) -> int:
             log.append({"key": list(key), **record})
             target.save(out)
             log_path.write_text(json.dumps(log, indent=1) + "\n")
-        failed = [e for e in log if e["status"] != "ok"]
-        print(f"{len(log) - len(failed)} of {len(log)} configurations ran; {len(failed)} failed (see runs.json)")
+        current_keys = {run_key(r, identity) for r in runs}
+        log_now = [e for e in log if tuple(e["key"]) in current_keys]
+        failed = [e for e in log_now if e["status"] != "ok"]
+        print(f"{len(log_now) - len(failed)} of {len(log_now)} configurations ran; {len(failed)} failed (see runs.json)")
     summary = fit_and_score(evidence, args.machine, profile_name)
     verdict = summary.get("fitted", summary["prior"])
     v = verdict["validation"]

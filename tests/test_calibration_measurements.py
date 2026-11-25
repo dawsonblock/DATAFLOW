@@ -18,7 +18,13 @@ def m(mid: str, split: str = "calibration", **kw) -> Measurement:
 
 def test_signature_identifies_the_benchmark_not_the_run():
     a, b = m("run-1", n_gpu_layers=16), m("run-2", n_gpu_layers=16, tokens_per_s=22.0)
-    assert a.signature == b.signature == ("i9-3080ti", "decode", "qwen3-30b-a3b", 4.5, 16, 0, 0, 1, 0)
+    assert a.signature == b.signature
+    assert a.execution_key == ("i9-3080ti", 4.5, 16, 0, 0)  # machine, bits/weight, ngl, n_cpu_moe, threads
+    assert a.workload_key == ("qwen3-30b-a3b", "decode", 0, 1)  # model, phase, context, batch
+    assert a.signature == (*a.execution_key, *a.workload_key)
+    # the same workload on another machine is the same workload, executed differently
+    other = m("y", machine="m2", n_gpu_layers=16)
+    assert other.workload_key == a.workload_key and other.execution_key != a.execution_key
     assert m("x", n_gpu_layers=17).signature != a.signature
     assert m("x", kind="prefill", n_gpu_layers=16).signature != a.signature
     assert m("x", machine="m2", n_gpu_layers=16).signature != a.signature

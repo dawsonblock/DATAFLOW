@@ -54,6 +54,23 @@ python -m benchmarks.run_report --base-profile <profile>
 Commit `evidence/<machine>/`, the updated profile and the regenerated `reports/` together, and
 state the validation verdict in the commit message.
 
+## The physical runtime (v0.4)
+
+`basp/runtime/` executes real GGUF models (Qwen3 dense and MoE) on the CPU in NumPy float32.
+CUDA, Metal, GGML and remote backends are declared but **not implemented**: never describe them,
+or anything here, as GPU inference. Verify any runtime change against transformers before using it:
+
+```bash
+pip install -e ".[dev,verify]"     # torch and transformers: the reference
+python -m pytest -q tests/test_v04_runtime.py tests/test_v04_verification.py
+python -m benchmarks.verify_runtime --gguf ~/models/Qwen3-0.6B-Q8_0.gguf --model qwen3-0.6b \
+    --tokenizer <HF tokenizer dir> --out evidence/verification/qwen3-0.6b
+```
+
+The parity receipts are bound to the runtime's source fingerprint: after changing runtime code,
+rerun `verify_runtime` (the report marks older results stale). Receipts about one model never
+qualify a gate regime about another.
+
 ## Development
 
 - `python -m pytest -q` (about 4 minutes) and `ruff check .` must pass before every commit.

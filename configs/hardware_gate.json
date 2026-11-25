@@ -14,5 +14,7 @@
     "nominal": 2e-07,
     "pessimistic": 1e-06
   },
-  "decision_corner": "pessimistic"
+  "decision_corner": "pessimistic",
+  "model_quality_relative_perplexity_max": 1.01,
+  "_model_quality_note": "Added in v0.4 to give the 'no material degradation' criterion a number: perplexity at most 1% above the reference runtime's on the same text. No existing threshold was changed."
 }

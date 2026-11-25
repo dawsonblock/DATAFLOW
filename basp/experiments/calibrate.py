@@ -11,6 +11,7 @@ predictions against the **validation** split, which the fit never sees.
 from __future__ import annotations
 
 import copy
+import json
 import math
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -22,14 +23,15 @@ from basp.calibration import (
     Measurement,
     MeasurementSet,
     apply_fits,
-    evaluate_calibration,
+    evaluate_by_machine,
 )
 from basp.core.capabilities import DeviceKind
 from basp.core.tensor import FormatTable
 from basp.core.topology import Topology
 from basp.dataflow.base import DataflowMode, ExecutionPolicy
+from basp.evidence import profile_identity
 from basp.experiments.harness import build
-from basp.experiments.profiles import load_topology
+from basp.experiments.profiles import load_json, load_topology
 from basp.scheduler import placement
 from basp.workloads.trace import synth_trace
 from basp.workloads.zoo import MODELS
@@ -99,22 +101,83 @@ def load_measurements(path: str | Path | None) -> MeasurementSet:
     return combined
 
 
+def load_identities(path: str | Path | None) -> dict[str, dict[str, Any]]:
+    """The identities of each machine's latest benchmark run (``evidence/<machine>/identity.json``)."""
+    out: dict[str, dict[str, Any]] = {}
+    if path is not None and Path(path).is_dir():
+        for file in sorted(Path(path).glob("*/identity.json")):
+            out[file.parent.name] = json.loads(file.read_text())
+    return out
+
+
+def staleness(identities: Mapping[str, Mapping[str, Any]]):
+    """A predicate that excludes measurements produced by a benchmark executable or model
+    weights other than the ones each machine's latest run used."""
+
+    def check(m: Measurement) -> str | None:
+        current = identities.get(m.machine)
+        if not current:
+            return None
+        exe = m.provenance.get("executable_sha256")
+        if exe and current.get("executable_sha256") and exe != current["executable_sha256"]:
+            return "benchmark executable changed since this measurement"
+        model = (m.provenance.get("model_file") or {}).get("sha256")
+        now = (current.get("models") or {}).get(m.model)
+        if model and now and model != now:
+            return "model weights changed since this measurement"
+        return None
+
+    return check
+
+
 def calibration_status(path: str | Path | None, profiles: Mapping[str, str | Topology] | None = None,
                        *, median_max: float = 0.10, p95_max: float = 0.20,
                        min_validation: int = 8) -> CalibrationReport:  # fmt: skip
     """Calibration verdict from measurements: a file, or a directory whose ``*/measurements.json``
-    files (one per machine, as ``benchmarks.run_calibration`` writes them) are combined.
-    ``None`` or a missing path: nothing measured."""
+    files (one per machine, as ``benchmarks.run_calibration`` writes them) are combined, each
+    machine evaluated on its own.  Measurements made with an executable or weights that have
+    changed since are excluded.  ``None`` or a missing path: nothing measured."""
     measurements = load_measurements(path)
     return score(measurements, profiles, median_max=median_max, p95_max=p95_max,
-                 min_validation=min_validation)  # fmt: skip
+                 min_validation=min_validation, exclude=staleness(load_identities(path)))  # fmt: skip
 
 
 def score(measurements: MeasurementSet, profiles: Mapping[str, str | Topology] | None = None, *,
-          median_max: float = 0.10, p95_max: float = 0.20, min_validation: int = 8) -> CalibrationReport:  # fmt: skip
-    """Predict every measurement and judge the validation split against the thresholds."""
-    return evaluate_calibration(lambda m: predict(m, profiles), measurements, median_max=median_max,
-                                p95_max=p95_max, min_validation=min_validation)  # fmt: skip
+          median_max: float = 0.10, p95_max: float = 0.20, min_validation: int = 8,
+          exclude=None) -> CalibrationReport:  # fmt: skip
+    """Predict every measurement and judge each machine's validation split against the thresholds."""
+    return evaluate_by_machine(lambda m: predict(m, profiles), measurements, median_max=median_max,
+                               p95_max=p95_max, min_validation=min_validation, exclude=exclude)  # fmt: skip
+
+
+def profile_qualification(calibration: CalibrationReport, evidence: str | Path | None) -> dict[str, dict[str, Any]]:
+    """For each machine profile: is it validated, and is it still the profile that was validated?
+
+    A profile qualifies only if its machine's validation passed *and* its current content is the
+    profile the calibration run recorded (the prior it scored, or the profile it fitted on the
+    calibration split).  A profile edited after validation -- for example tuned until the
+    validation split looked good -- does not qualify.
+    """
+    out: dict[str, dict[str, Any]] = {}
+    for machine, report in calibration.by_machine.items():
+        profile = MACHINE_PROFILES.get(machine)
+        if profile is None:
+            continue
+        current = profile_identity(load_json(profile))
+        record_path = Path(evidence) / machine / "calibration.json" if evidence is not None else None
+        record = json.loads(record_path.read_text()) if record_path is not None and record_path.exists() else {}
+        bound = {record.get("prior_profile_sha"), record.get("fitted_profile_sha")} - {None}
+        if report.status != "pass":
+            reason = f"validation {report.status.replace('_', ' ')}"
+        elif not bound:
+            reason = "no calibration record binds a profile to this validation"
+        elif current not in bound:
+            reason = "the profile changed after it was validated"
+        else:
+            reason = ""
+        out[profile] = {"machine": machine, "status": report.status, "qualified": not reason, "reason": reason,
+                        "profile_sha": current}  # fmt: skip
+    return out
 
 
 # -- fitting a machine profile to the calibration split ----------------------------------

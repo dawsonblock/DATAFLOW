@@ -39,6 +39,7 @@ from pathlib import Path
 from typing import Any
 
 from basp.calibration.measurements import Measurement, MeasurementSet
+from basp.evidence import file_identity
 from basp.models.gguf import GGUFError, check_against, read_gguf
 from basp.workloads.zoo import MODELS
 
@@ -196,8 +197,10 @@ def resolve_model(name: str, path: str, *, bits_per_weight: float | None = None,
         raise SystemExit(f"{name!r} is not a model shape the simulator knows ({', '.join(sorted(MODELS))})")
     if bits_per_weight is not None and abs(bits_per_weight - measured_bits) > 0.01:
         print(f"note: {Path(path).name} has {measured_bits} bits per weight; using the given {bits_per_weight}")
+    # the header identifies the shape; only the full content identifies the weights
+    fingerprint = {**gguf.fingerprint(), "sha256": file_identity(path)["sha256"]}
     return BenchModel(name, path, bits_per_weight if bits_per_weight is not None else measured_bits,
-                      gguf.fingerprint(), check)  # fmt: skip
+                      fingerprint, check)  # fmt: skip
 
 
 def run_one(binary: str, model: BenchModel, *, machine: str, split: str, ngl: int, target: MeasurementSet,

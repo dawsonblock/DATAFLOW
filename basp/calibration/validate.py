@@ -67,6 +67,8 @@ class CalibrationReport:
     status: str  # "pass" | "fail" | "not_evaluated"
     reasons: list[str] = field(default_factory=list)  # why the status is not "pass"
     notes: list[str] = field(default_factory=list)  # informational, never affects the status
+    excluded: list[dict[str, Any]] = field(default_factory=list)  # measurements not counted, and why
+    by_machine: dict[str, CalibrationReport] = field(default_factory=dict)  # each machine on its own
 
     @property
     def passed(self) -> bool:
@@ -85,6 +87,8 @@ class CalibrationReport:
             "validation": clean(self.validation),
             "calibration_in_sample": clean(self.calibration),
             "per_measurement": self.per_measurement,
+            "excluded": self.excluded,
+            "by_machine": {m: r.to_json() for m, r in self.by_machine.items()},
         }
 
 
@@ -99,40 +103,54 @@ def evaluate_calibration(
     median_max: float = 0.10,
     p95_max: float = 0.20,
     min_validation: int = 8,
+    exclude: Callable[[Measurement], str | None] | None = None,
 ) -> CalibrationReport:
     """Compare ``predict(measurement)`` (tokens/s, or ``None`` if unsupported) with measurements.
 
-    Only the validation split decides the status:
+    Repetitions of one benchmark (same signature) form **one** data point, their median: eight
+    runs of one workload are one benchmark, not eight.  ``exclude(m)`` returns a reason to leave a
+    measurement out (for example: produced by a benchmark executable or weights that have since
+    changed); excluded measurements are listed, never counted.  Only the validation split decides:
 
-    * ``not_evaluated`` -- fewer than ``min_validation`` validation measurements, or no usable
-      prediction for at least one of them;
+    * ``not_evaluated`` -- fewer than ``min_validation`` distinct validation benchmarks, or no
+      usable prediction for at least one of them;
     * ``fail`` -- the median or the 95th-percentile relative error exceeds its threshold;
     * ``pass`` -- otherwise.
     """
+    groups: dict[tuple, list[Measurement]] = {}
+    excluded: list[dict[str, Any]] = []
+    for m in measurements:
+        reason = exclude(m) if exclude is not None else None
+        if reason:
+            excluded.append({"id": m.id, "machine": m.machine, "split": m.split, "reason": reason})
+            continue
+        groups.setdefault(m.signature, []).append(m)
     rows: list[dict[str, Any]] = []
     pairs: dict[str, list[tuple[float, float]]] = {"calibration": [], "validation": []}
     missing: list[str] = []
-    for m in measurements:
+    for members in groups.values():
+        m = members[0]
+        measured = float(np.median([x.tokens_per_s for x in members]))
         predicted = predict(m)
         ok = _usable(predicted)
-        rel = abs(predicted - m.tokens_per_s) / m.tokens_per_s if ok else None
-        rows.append({"id": m.id, "machine": m.machine, "model": m.model, "kind": m.kind,
-                     "split": m.split, "measured": m.tokens_per_s,
+        rel = abs(predicted - measured) / measured if ok else None
+        rows.append({"id": m.id, "machine": m.machine, "model": m.model, "kind": m.kind, "split": m.split,
+                     "repetitions": len(members), "measured": measured,
                      "predicted": float(predicted) if ok else None, "rel_error": rel})  # fmt: skip
         if ok:
-            pairs[m.split].append((float(predicted), m.tokens_per_s))
+            pairs[m.split].append((float(predicted), measured))
         elif m.split == "validation":
             missing.append(m.id)
 
     calibration = error_stats(pairs["calibration"])
     validation = error_stats(pairs["validation"])
-    n_validation = len(measurements.validation)
+    n_validation = sum(1 for members in groups.values() if members[0].split == "validation")
     thresholds = {"median_max": median_max, "p95_max": p95_max,
                   "min_validation": float(min_validation)}  # fmt: skip
     reasons: list[str] = []
     if n_validation < min_validation:
         status = "not_evaluated"
-        reasons.append(f"only {n_validation} validation measurement(s); at least "
+        reasons.append(f"only {n_validation} distinct validation benchmark(s); at least "
                        f"{min_validation} are required")  # fmt: skip
     if missing:
         status = "not_evaluated"
@@ -147,5 +165,34 @@ def evaluate_calibration(
     notes: list[str] = []
     if calibration.n:
         notes.append(f"in-sample (calibration split) median error {calibration.median:.1%} over "
-                     f"{calibration.n} measurement(s): informational, does not affect the status")  # fmt: skip
-    return CalibrationReport(calibration, validation, rows, thresholds, status, reasons, notes)
+                     f"{calibration.n} benchmark(s): informational, does not affect the status")  # fmt: skip
+    repeated = sum(len(g) - 1 for g in groups.values())
+    if repeated:
+        notes.append(f"{repeated} repeated run(s) were merged into their benchmark (median)")
+    if excluded:
+        notes.append(f"{len(excluded)} measurement(s) excluded: {sorted({e['reason'] for e in excluded})}")
+    return CalibrationReport(calibration, validation, rows, thresholds, status, reasons, notes, excluded)
+
+
+def evaluate_by_machine(predict: Callable[[Measurement], float | None], measurements: MeasurementSet,
+                        **kwargs: Any) -> CalibrationReport:  # fmt: skip
+    """Evaluate every machine on its own; the combined status passes only if every machine with
+    measurements passes, and fails if any fails.  Machines are never pooled: a good fit on one
+    cannot hide a bad fit on another."""
+    per_machine: dict[str, CalibrationReport] = {}
+    for machine in sorted({m.machine for m in measurements}):
+        subset = MeasurementSet([m for m in measurements if m.machine == machine])
+        per_machine[machine] = evaluate_calibration(predict, subset, **kwargs)
+    combined = evaluate_calibration(predict, measurements, **kwargs)
+    statuses = [r.status for r in per_machine.values()]
+    if not statuses:
+        combined.status = "not_evaluated"
+    elif "fail" in statuses:
+        combined.status = "fail"
+    elif all(st == "pass" for st in statuses):
+        combined.status = "pass"
+    else:
+        combined.status = "not_evaluated"
+    combined.reasons = [f"{machine}: {reason}" for machine, r in per_machine.items() for reason in r.reasons]
+    combined.by_machine = per_machine
+    return combined

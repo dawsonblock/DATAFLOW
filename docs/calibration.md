@@ -94,10 +94,30 @@ Output, in `evidence/<machine>/`:
 | `measurements.json` | every measurement, with its split, the llama.cpp build, the GGUF header fingerprint and the plan hash |
 | `runs.json` | every configuration: command, status, failure output |
 | `environment.json` | CPU, GPU, driver, memory, llama-bench version, repository state |
-| `calibration.json` | scores of the prior and of the fitted profile, fitted scales |
+| `identity.json` | SHA-256 of the llama-bench executable and of every model file, and of the plan |
+| `calibration.json` | scores of the prior and of the fitted profile, fitted scales, and the fingerprints of both profiles |
 | `profile_fitted.json` | the profile fitted on the calibration split |
 
 The last line says `PASS`, `FAIL` or `NOT EVALUATED` for the validation split.
+
+How measurements are judged (v0.4):
+
+* **Repeats count once.** Several runs of the same benchmark (same machine, file, offload,
+  threads, model, phase, context and batch) are merged into one data point, their median; eight
+  runs of one workload are one validation benchmark, not eight.
+* **Each machine on its own.** The verdict is computed per machine; the combined status fails if
+  any machine fails and passes only if every machine passes. A machine with too few validation
+  benchmarks cannot borrow another machine's.
+* **Changed executable or weights.** Each model file is hashed in full (SHA-256), as is the
+  llama-bench executable; both are recorded with every measurement and in `identity.json`. A
+  rebuilt llama.cpp or a different model file makes earlier measurements stale: the runner runs
+  those configurations again, and scoring excludes the stale ones.
+* **The validated profile is the fingerprinted one.** `calibration.json` records the fingerprint
+  of the prior and of the fitted profile. A profile counts as validated only while its content
+  (comments excluded) equals one of them: editing a profile after validation un-validates it.
+* **Coverage.** The report lists which execution regimes each machine's validation split covers
+  (CPU only, split layers, GPU only, experts on the CPU, long context, dense, MoE); the simulator
+  is trusted only there. The M2 and Colab plans do not cover MoE execution.
 
 - **PASS:** rerun with `--update-profile` (or `--fit-only --update-profile`) to write the fitted
   profile into `configs/`, then regenerate the comparison on it:
@@ -157,4 +177,6 @@ routing and the assumed compression ratio; the report states which were used.
   power, link latency and price are estimates, evaluated at three corners. The gate uses the
   pessimistic corner (slow, expensive modules; fast, cheap conventional components).
 - The cost of a production scheduler. The gate reports the per-decision budget instead.
-- Model quality on real weights. The numeric co-simulation uses a small random-weight model.
+- Model quality or numerical correctness of anything but the software that was measured. The
+  physical runtime's parity with transformers (`benchmarks.verify_runtime`) is measured on the model
+  it ran, and qualifies nothing about other models.

@@ -5,26 +5,35 @@ topology-aware, asynchronous dataflow layer that decides, per operation, whether
 a processor or to execute where the data already resides — and an engineering system for finding
 out, from evidence, **which architecture is best**, including "a conventional CPU/GPU system".
 
-This repository is **v0.3, the Evidence-Gated Adaptive Execution Foundation**: a discrete-event
-simulator, a cost-based scheduler, a distributed tensor memory model, the BASP Stream Protocol,
-INT4 reference kernels, eight competing dataflow architectures, a multi-objective design-space
-explorer, a pre-registered calibration plan with a one-command runner, evidence levels and
-provenance for every result, and an evidence-gated hardware decision. It is a Python research
-prototype that needs only NumPy.
+This repository is **v0.4, Evidence-Gated Heterogeneous Execution**: the v0.3 simulator,
+scheduler, design-space explorer, calibration plan and evidence-gated decision, now with
 
-> **Status of the numbers.** Nothing here has been measured on hardware. Every performance figure
-> is an uncalibrated simulation (evidence level E1): the host and GPU come from an illustrative
-> profile, everything about compute-memory modules is an estimate with a pessimistic–nominal–
-> optimistic range, and routing is synthetic. See [docs/limitations.md](docs/limitations.md).
+* **evidence receipts** — every value the hardware gate uses is bound to the identities that
+  produced it (simulator source, configuration, profile, validation, machine, model weights,
+  runtime, benchmark); a stale, mislabelled or other-model receipt is rejected;
+* **physical memory domains** — shared accounting (a unified-memory Mac has one pool), admission
+  control, reference-counted eviction safety, asynchronous migration, and expert-cache policies;
+* **a physical runtime that executes real GGUF models** on the CPU (Qwen3 dense and MoE, 11 GGUF
+  weight formats), verified against Hugging Face transformers.
+
+It is a Python research system that needs only NumPy (plus PyTorch and transformers to run the
+verification reference).
+
+> **Status of the numbers.** No calibration measurement of the target machines exists yet: every
+> architecture figure is an uncalibrated simulation (E1), everything about compute-memory modules
+> is an estimate with a pessimistic–nominal–optimistic range, and routing is synthetic. The only
+> measurements (E3) are the runtime's numerical parity with transformers. The CPU runtime is not
+> GPU inference: the CUDA, Metal and GGML backends are declared and report themselves
+> unavailable. See [docs/limitations.md](docs/limitations.md).
 
 ## Where things stand
 
 **Hardware development: NO-GO**, and the simulation no longer leaves much doubt about the
 direction. No FPGA or RTL work has been started, by decision ([docs/roadmap.md](docs/roadmap.md)).
 
-Full report: [reports/v0.3/report.md](reports/v0.3/report.md) (machine-readable:
-[results.json](reports/v0.3/results.json), [dse.json](reports/v0.3/dse.json); inputs and
-environment: [provenance.json](reports/v0.3/provenance.json)). First workload: Qwen3-30B-A3B
+Full report: [reports/v0.4/report.md](reports/v0.4/report.md) (machine-readable:
+[results.json](reports/v0.4/results.json), including every gate receipt; [dse.json](reports/v0.4/dse.json);
+inputs and environment: [provenance.json](reports/v0.4/provenance.json)). First workload: Qwen3-30B-A3B
 shapes at 4.5 bits per weight (16.0 GiB), single-user decoding, 12 GiB GPU.
 
 | Architecture | tokens/s (range over estimates) | vs A, nominal / pessimistic | per dollar vs A, nominal / pessimistic |
@@ -58,7 +67,17 @@ What the simulation says, under its assumptions:
   favoured modules. Both are fixed, and H dropped off the front.
 * **Numerics hold within tolerance** on a small random-weight model (relative error 4.5e-4,
   identical routing and tokens). Dataflows that keep the reduction order are bit-identical; those
-  that reorder FP32 sums agree within rounding. Real model weights have not been run.
+  that reorder FP32 sums agree within rounding.
+* **Real weights now run, and match the reference.** The CPU runtime executes Qwen3-0.6B (Q8_0
+  GGUF) with logits within 2.8e-6 relative error of transformers on the same weights (target
+  0.002), every layer's output matching, 16 identical greedy tokens ("The capital of France is" →
+  " Paris. The capital of France is also the capital of the Republic of France.") and perplexity
+  1.000001x the reference. MoE routing matches transformers exactly on small random-weight
+  models. These receipts concern Qwen3-0.6B and do not qualify the 30B regime's gate criteria.
+* **Expert caching on a small GPU depends on capacity.** On synthetic Qwen3-30B-A3B routing, the
+  cost-aware and predictive caches (run rarely used experts on the CPU instead of migrating them)
+  are about 14% faster than LRU with a 2 GiB expert cache, while LFU and LRU win at 4 and 8 GiB
+  (report section 10; simulated, E1).
 
 ## What you need to run
 
@@ -92,12 +111,12 @@ against a fake llama-bench. Expect small fixes on first use.
 
 ```bash
 pip install -e ".[dev]"                          # or just: pip install numpy pytest
-python -m pytest -q                              # regression suite, about four minutes
+python -m pytest -q                              # regression suite, about five minutes
 python -m benchmarks.dataflow_model              # closed-form comparison of specification section 6
 python -m benchmarks.explore --budget 60 --workers 4 --out /tmp/dse.json   # a small exploration
 python -m benchmarks.run_report --quick          # every experiment, short runs, a few minutes
 python -m benchmarks.explore --budget 2000 --workers 4                     # full exploration (~25 min)
-python -m benchmarks.run_report                  # the full report -> reports/v0.3/ (~15 min)
+python -m benchmarks.run_report                  # the full report -> reports/v0.4/ (~15 min)
 ```
 
 Both the exploration and the report are deterministic: on the same Python and NumPy versions
@@ -145,21 +164,39 @@ print(result.plan.choice.mode.name, "on device", result.plan.devices)
 print(f"estimated {result.estimate_s * 1e6:.1f} us, simulated {result.actual_s * 1e6:.1f} us")
 ```
 
-## What v0.3 adds
+## Running real models
+
+```bash
+pip install -e ".[dev,verify]"     # verify: torch and transformers, the reference
+python - <<'PY'
+from basp.runtime import Engine, generate
+engine = Engine("Qwen3-0.6B-Q8_0.gguf")          # any Qwen3 / Qwen3-MoE GGUF the runtime supports
+with engine.session(64) as s:
+    print(generate(s, [785, 6722, 315, 9625, 374], 12).tokens)   # token ids in, token ids out
+print(engine.report()["plan"])                    # which backend runs what; why others were rejected
+PY
+python -m benchmarks.verify_runtime --gguf Qwen3-0.6B-Q8_0.gguf --model qwen3-0.6b \
+    --tokenizer <HF tokenizer dir> --out evidence/verification/qwen3-0.6b
+```
+
+The runtime dequantises weights to float32 (about four bytes per parameter of memory), so it is a
+reference implementation for correctness, not a fast engine.
+
+## What v0.4 adds
 
 | Item | Where | Evidence |
 |---|---|---|
-| Regression fix for every defect of the v0.2 audit | see [docs/roadmap.md](docs/roadmap.md) | `tests/test_v03_evidence.py` reproduces each one |
-| Evidence levels E0–E3 and provenance | `basp/evidence.py`, `provenance.json` | stale explorations are detected and excluded from conclusions |
-| Candidate-specific, evidence-levelled gate | `basp/experiments/gate.py` | insufficient evidence can fail a criterion, never pass it |
-| Pre-registered calibration plan, one-command runner | `configs/calibration_plan.json`, `benchmarks/run_calibration.py` | end to end against a fake llama-bench: resumes, records failures, the fit recovers a hidden machine's parameters |
-| GGUF header reader | `basp/models/gguf.py` | agrees with the reference `gguf` package; llama.cpp-style Qwen3 tensor layouts match the simulator's parameter counts to 0.2% |
-| Real routing and measured compression in every experiment | `--trace`, `--compression` on `benchmarks.explore` and `benchmarks.run_report` | the report states which data it used |
-| Unified memory, prompt processing, GPU classes | `DeviceSpec.memory_domain`, `ModelProgram(prompt=True)`, `configs/design_estimates.json` | tests in `tests/test_v03_evidence.py` |
-| Backend contract for real execution | `basp/backends/base.py` | `NumericPayload` implements it |
+| Evidence v2: receipts, metric-specific qualification, identity binding, directory manifests | `basp/evidence/` | `tests/test_v04_evidence.py`, including every adversarial case of the v0.4 plan |
+| Gate decided from receipts | `basp/experiments/gate.py` | a throughput receipt never qualifies energy; stale or other-model receipts are rejected |
+| Calibration repairs (repeats count once, per-machine verdicts, executable and weight hashes, profile fingerprints, coverage) | `basp/calibration/`, `benchmarks/run_calibration.py` | as above |
+| Memory domains, admission, migration, prefetch, expert-cache policies | `basp/memory/` | `tests/test_v04_memory.py` |
+| Unified-memory design repair | `basp/dse/hardware.py` | designs on the M2 base are now buildable |
+| Physical runtime and `ExecutionBackend` | `basp/runtime/`, `basp/backends/` | `tests/test_v04_runtime.py` |
+| GGUF tensor data and dequantisation (11 formats) | `basp/models/quants.py`, `gguf_tensors.py` | bit-identical to the reference `gguf` package |
+| Verification against transformers | `basp/verification/`, `benchmarks/verify_runtime.py`, `evidence/verification/` | real Qwen3-0.6B; tiny dense and MoE models in CI |
 
-The engine underneath (v0.1) and the architecture-discovery layer (v0.2) are described in
-[docs/architecture.md](docs/architecture.md).
+Deferred: architecture I, the native C++/CUDA/Metal engine, a real MoE model end to end
+([docs/roadmap.md](docs/roadmap.md)). v0.3 and earlier: [docs/architecture.md](docs/architecture.md).
 
 ## Repository layout
 
@@ -169,43 +206,47 @@ basp/
   simulator/    event kernel, fluid bandwidth model, interconnect, kernel execution, energy
   dataflow/     the seven modes, plan vocabulary, adaptive candidate enumeration, prefetcher
   scheduler/    cost model, planning state, joint scheduler, placement, predictor
-  memory/       tensor registry, residency, replication (expert cache), allocator, paged KV cache
+  memory/       tensor registry, residency, replication, allocator, paged KV cache; physical memory
+                domains, admission, migration, prefetch, expert-cache policies
   streams/      BASP Stream Protocol: commands, completions, activation and weight streams
   kernels/      float64 reference, INT4 format, fused streaming kernels, MoE expert, expert shards
   compiler/     lowering, operator fusion, command emission
-  backends/     virtual (simulated devices executing BSP commands), cpu (numeric execution)
+  backends/     virtual (simulated devices executing BSP commands), cpu (numeric payload and the
+                runtime's NumPy backend), execution contract; cuda/metal/ggml/remote: declared, unavailable
   workloads/    model shapes from 4 B to 3 T parameters, routing traces, small numeric MoE model
-  verification/ numerical, dependency and accounting checks
+  verification/ numerical, dependency and accounting checks; runtime parity with transformers
   analysis/     critical-path attribution and scaling limits
   dse/          design spaces, Pareto utilities, exhaustive / evolutionary / Bayesian search,
                 parametric hardware designs with cost and estimate corners
   calibration/  measurement store with enforced calibration/validation split, fits, validation
-  models/       GGUF headers: shapes, exact sizes, fingerprints (no tensor data)
-  evidence.py   evidence levels and provenance
+  models/       GGUF headers, tensor data, dequantisation, writer for test models
+  runtime/      the physical runtime: device manager, plans, dispatcher, sessions, Qwen3 model, generation
+  evidence/     evidence levels, identities, receipts, qualification, provenance
   experiments/  architectures, investigations, suites, exploration, calibration glue, gate, reports
 benchmarks/     command-line entry points (report, exploration, profiling, calibration, traces)
 configs/        hardware profiles, design estimates and gate thresholds (assumptions, labelled)
-reports/v0.3/   the generated report, its results, provenance and the exploration data
-reports/v0.1/, reports/v0.2/   earlier reports, kept as records (superseded)
-evidence/       measurements from the calibration machines (created by run_calibration)
+reports/v0.4/   the generated report, its results (with receipts), provenance and the exploration data
+reports/v0.1/ to reports/v0.3/   earlier reports, kept as records (superseded)
+evidence/       verification/ (runtime parity); <machine>/ measurements (created by run_calibration)
 tests/          regression suite
 docs/           architecture, calibration, limitations, roadmap
 ```
 
-`hardware/`, `integrations/`, `backends/cuda` and `backends/metal` from the original layout do
-not exist: nothing below the simulator is built until the hardware gate passes.
+`hardware/` and `integrations/` from the original layout do not exist: nothing below the simulator
+is built until the hardware gate passes. `backends/cuda` and `backends/metal` exist only as
+declarations that refuse every call.
 
 ## Milestones
 
 | Release | Objective | State |
 |---|---|---|
 | v0.1–v0.2 | Dataflow engine; architecture discovery | Done, simulated |
-| v0.3 | Repair and evidence infrastructure | **Done** (this release) |
-| v0.4 | Hardware calibration on the two machines | **Ready to run**; nothing measured |
-| v0.5 | Real GGUF model execution, verified against a reference | Not started |
-| v0.6 | Native CPU, CUDA and Metal backends | Not started |
-| v0.7 | Adaptive expert placement, measured against llama.cpp | Not started |
-| v0.8 | Distributed execution; architecture I | Not started |
+| v0.3 | Repair and evidence infrastructure | Done |
+| v0.4 | Evidence receipts, memory domains, a verified runtime for real GGUF models | **Done for the CPU** (this release) |
+| Calibration | Held-out validation on the calibration machines | **Ready to run**; nothing measured |
+| v0.5 | Native CPU, CUDA and Metal backends behind the same contract and parity harness | Not started |
+| v0.6 | Adaptive expert placement on real hardware, measured against llama.cpp | Components in place |
+| v0.7 | Architecture I; distributed execution | Not started |
 | v0.9–v1.0 | Accelerator RTL, FPGA prototype | Blocked on the gate |
 
 ## License

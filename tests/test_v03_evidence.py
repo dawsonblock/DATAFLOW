@@ -32,7 +32,6 @@ from basp.experiments.calibrate import (
     predict,
     score,
 )
-from basp.experiments.gate import Candidate, evaluate_gate
 from basp.experiments.profiles import load_json, load_topology
 from basp.experiments.variants import run_architecture, traces
 from basp.memory.allocator import OutOfMemory
@@ -80,13 +79,14 @@ def test_provenance_detects_changed_configs_inputs_and_parameters(tmp_path):
 
 # -- audit defect A: calibration rows carry their machine; the report can use them -------------------
 def test_scored_rows_name_their_machine_and_the_report_finds_validated_profiles(tmp_path):
-    from basp.experiments.report_v3 import validated_profiles
+    from basp.experiments.report_v4 import validated_profiles
 
     ms = [Measurement(id=f"v{i}", machine=MACHINE, split="validation", kind="decode", model="qwen3-8b",
                       tokens_per_s=10.0, n_gpu_layers=4 * i) for i in range(3)]  # fmt: skip
     report = score(MeasurementSet(ms))
     assert {r["machine"] for r in report.per_measurement} == {MACHINE}
-    assert validated_profiles(report) == {"i9_11900kf_rtx3080ti"}
+    # three benchmarks are too few, and no calibration record binds the profile: not validated
+    assert report.status == "not_evaluated" and validated_profiles(report, tmp_path) == set()
     assert validated_profiles(calibration_status(None)) == set()
 
 
@@ -103,79 +103,7 @@ def test_measurements_are_merged_from_per_machine_evidence_folders(tmp_path):
     assert len(load_measurements(tmp_path / "nothing-here")) == 0
 
 
-# -- audit defect B: a candidate is qualified only by its own evidence ----------------------------------
-def candidate(**kw):
-    regime = "30B MoE, single-user decoding"
-    args = {"arch": "H", "name": "Hierarchical", "regime": regime, "throughput_ratio": 2.5, "energy_ratio": 2.2,
-            "cost_efficiency_ratio": 2.1, "scaling_efficiency": 0.75, "scaling_arch": "H", "scaling_regime": regime}
-    args.update(kw)
-    return Candidate(**args)
-
-
-@pytest.fixture(scope="module")
-def passing_calibration(tmp_path_factory):
-    path = tmp_path_factory.mktemp("gate") / "m.json"
-    ms = [Measurement(id=f"m{i}", machine=MACHINE, split="validation", kind="decode", model="qwen3-8b",
-                      tokens_per_s=1.0, bits_per_weight=4.85, n_gpu_layers=4 * i) for i in range(8)]  # fmt: skip
-    MeasurementSet([replace(m, tokens_per_s=predict(m)) for m in ms]).save(path)
-    report = calibration_status(path)
-    assert report.status == "pass"
-    return report
-
-
-def gate(calibration, cand=None, **kw):
-    args = {"comparison_on_calibrated_profile": True, "plans_per_batch": 40.0, "batch_time_s": 2e-3,
-            "numeric_rel_error": 5e-4, "real_weights_verified": True, "model_quality_measured": True}
-    args.update(kw)
-    return evaluate_gate(cand or candidate(), THRESHOLDS, calibration=calibration, **args)
-
-
-def test_gate_needs_e2_simulation_and_e3_measurements_to_open(passing_calibration):
-    decision = gate(passing_calibration, plans_per_batch=None)
-    by_name = {c.name: c for c in decision.criteria}
-    assert by_name["Throughput improvement"].level is EvidenceLevel.E2 and by_name["Throughput improvement"].passed
-    assert by_name["Scheduler overhead"].status == "not_evaluated"  # nothing measured
-    # with a production scheduler measured, every criterion could pass; estimates never do
-    estimated = gate(passing_calibration)
-    overhead = next(c for c in estimated.criteria if c.name == "Scheduler overhead")
-    assert overhead.status == "not_evaluated" and overhead.level is EvidenceLevel.E0  # 0.1-2%: still an estimate
-    assert not estimated.go and estimated.verdict == "NO-GO (0 criteria failed, 1 not evaluated)"
-    # the same favourable simulation without validation is E1 and cannot pass
-    uncalibrated = gate(calibration_status(None))
-    levels = {c.name: c.level for c in uncalibrated.criteria}
-    assert levels["Throughput improvement"] is EvidenceLevel.E1
-    assert all(c.status != "pass" for c in uncalibrated.criteria[:6])
-    # model quality by construction is an argument (E0), not a measurement
-    quality = next(c for c in gate(passing_calibration, model_quality_measured=False).criteria
-                   if c.name == "Model quality")  # fmt: skip
-    assert quality.status == "not_evaluated" and quality.level is EvidenceLevel.E0 and quality.required.name == "E3"
-
-
-def test_scaling_measured_for_another_architecture_does_not_qualify_the_candidate(passing_calibration):
-    borrowed = gate(passing_calibration, candidate(scaling_arch="E"))
-    scaling = next(c for c in borrowed.criteria if c.name == "Four-module scaling efficiency")
-    assert scaling.status == "not_evaluated" and "measured for E" in scaling.result
-    elsewhere = gate(passing_calibration, candidate(scaling_regime="70B dense"))
-    assert next(c for c in elsewhere.criteria if c.name.startswith("Four")).status == "not_evaluated"
-    own = gate(passing_calibration, candidate(scaling_efficiency=0.69))
-    assert next(c for c in own.criteria if c.name.startswith("Four")).status == "fail"
-
-
-def test_insufficient_evidence_can_fail_but_never_pass(passing_calibration):
-    uncal = calibration_status(None)
-    bad = gate(uncal, candidate(cost_efficiency_ratio=0.3))
-    cost = next(c for c in bad.criteria if c.name == "Cost efficiency")
-    assert cost.status == "fail" and cost.level is EvidenceLevel.E1  # misses even on optimistic reading
-    off = gate(passing_calibration, comparison_on_calibrated_profile=False)
-    assert "did not run on the validated profile" in off.blockers[0]
-    assert {c.level for c in off.criteria[1:4]} == {EvidenceLevel.E1}
-    for change in ({"throughput_ratio": None}, {"energy_ratio": float("nan")}, {"scaling_efficiency": None}):
-        assert not gate(passing_calibration, candidate(**change)).go
-    hopeless = gate(passing_calibration, plans_per_batch=4000.0)  # 10% even at 50 ns per evaluation
-    assert next(c for c in hopeless.criteria if c.name == "Scheduler overhead").status == "fail"
-    report = gate(uncal).to_json()
-    assert report["candidate"] == "H Hierarchical" and report["criteria"][1]["level"] == "E1"
-    json.dumps(gate(passing_calibration, candidate(throughput_ratio=np.float64(2.5))).to_json())
+# -- audit defect B (a candidate is qualified only by its own evidence): tests/test_v04_evidence.py
 
 
 # -- audit defect C: the local fabric uses each module's own link bandwidth ----------------------------

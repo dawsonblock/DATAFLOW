@@ -1,4 +1,5 @@
-"""Real model files: reading GGUF headers (shapes, sizes, fingerprints). No tensor data yet."""
+"""Real model files: GGUF headers (shapes, sizes, fingerprints), tensor data and dequantisation
+(``gguf_tensors``, ``quants``), and a writer for small test models (``gguf_writer``)."""
 
 from .gguf import (
     GGML_TYPES,

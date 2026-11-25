@@ -19,6 +19,7 @@ import time
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
+from basp.dse.hardware import shares_host_memory
 from basp.dse.search import evolutionary, search
 from basp.evidence import provenance
 from basp.experiments.explore import (
@@ -29,6 +30,7 @@ from basp.experiments.explore import (
     evaluate_design,
     seed_designs,
 )
+from basp.experiments.profiles import load_topology
 from basp.experiments.variants import load_compression_profile
 from basp.workloads.zoo import MODELS
 
@@ -45,7 +47,7 @@ def main() -> None:
                         help="host/GPU profile every design is built on (a calibrated machine profile)")  # fmt: skip
     parser.add_argument("--trace", help="recorded routing trace for the model (replaces synthetic routing)")
     parser.add_argument("--compression", help="compression profile of real weights (measured entropy-coding ratio)")
-    parser.add_argument("--out", default="reports/v0.3/dse.json")
+    parser.add_argument("--out", default="reports/v0.4/dse.json")
     args = parser.parse_args()
 
     workload = json.loads(json.dumps(dict(DEFAULT_WORKLOAD, model=args.model)))
@@ -54,7 +56,9 @@ def main() -> None:
     if args.compression:
         workload["formats"] = {f.name: b for f, b in load_compression_profile(args.compression).items()}
     spec = MODELS[args.model]
-    space = design_space(spec.bytes_at() / 2**30)
+    base = load_topology(args.base_profile)
+    # an integrated GPU has no size of its own: it is either used (sharing the host pool) or not
+    space = design_space(spec.bytes_at() / 2**30, **({"gpu_sizes": (0, 64)} if shares_host_memory(base) else {}))
     evaluate = functools.partial(evaluate_design, workload=workload, base_profile=args.base_profile)
     corners_of = functools.partial(evaluate_corners, workload=workload, base_profile=args.base_profile)
     t0 = time.perf_counter()

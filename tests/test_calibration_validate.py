@@ -72,13 +72,13 @@ def test_one_bad_tail_point_fails_on_p95_only():
     assert len(report.reasons) == 1 and "p95 error" in report.reasons[0]
     row = next(r for r in report.per_measurement if r["id"] == "val-3")
     assert row == {"id": "val-3", "machine": "i9", "model": "qwen3-30b-a3b", "kind": "decode",
-                   "split": "validation", "measured": 43.0,
+                   "split": "validation", "measured": 43.0, "repetitions": 1,
                    "predicted": pytest.approx(68.8), "rel_error": pytest.approx(0.6)}  # fmt: skip
 
 
 def test_insufficient_evidence_is_not_evaluated():
     few = evaluate_calibration(scaled({}), measurements(n_validation=7))
-    assert few.status == "not_evaluated" and "only 7 validation" in few.reasons[0]
+    assert few.status == "not_evaluated" and "only 7 distinct validation" in few.reasons[0]
     assert "at least 8" in few.reasons[0]
     none = evaluate_calibration(scaled({}), measurements(n_validation=0))
     assert none.status == "not_evaluated" and none.validation.n == 0

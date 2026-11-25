@@ -6,6 +6,7 @@ the development container.  The llama-bench fixture reflects the *assumed* ``-o 
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import math
 from pathlib import Path
@@ -155,8 +156,9 @@ def test_find_routers_is_generic_and_lists_candidates():
     with pytest.raises(SystemExit, match=r"Candidate modules: blocks\.0\.moe\.router"):
         record_routing_trace.find_routers(renamed, 64)
     assert len(record_routing_trace.find_routers(renamed, 64, "router")) == 2
-    with pytest.raises(SystemExit, match="PyTorch and transformers"):
-        record_routing_trace.main(["--prompt", "hi", "--out", "unused"])
+    if importlib.util.find_spec("torch") is None or importlib.util.find_spec("transformers") is None:
+        with pytest.raises(SystemExit, match="PyTorch and transformers"):
+            record_routing_trace.main(["--prompt", "hi", "--out", "unused"])
 
 
 # -- profile_compression -----------------------------------------------------------------------

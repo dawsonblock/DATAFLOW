@@ -8,18 +8,20 @@ estimate, and **on evidence of at least the required level** (``basp.evidence``)
   evaluated" -- but it can fail when even the optimistic reading misses the threshold;
 * a criterion that cannot be evaluated counts against the decision;
 * evidence about one architecture or regime never stands in for another: a scaling result
-  measured for architecture E does not qualify architecture H.
+  measured for architecture E does not qualify architecture H;
+* each criterion is decided by **metric-specific receipts** (``basp.evidence``): a receipt
+  binds one value to the identities that produced it, and a receipt whose identities have
+  changed since (simulator source, profile, estimates, model weights, validation) is stale.
 """
 
 from __future__ import annotations
 
-import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
 from basp.calibration import CalibrationReport
-from basp.evidence import EvidenceLevel
+from basp.evidence import EvidenceLevel, Qualification, Receipt, ReceiptRegistry, qualify
 
 E0, E1, E2, E3 = EvidenceLevel.E0, EvidenceLevel.E1, EvidenceLevel.E2, EvidenceLevel.E3
 
@@ -52,22 +54,16 @@ class Criterion:
 
 @dataclass
 class Candidate:
-    """Everything the gate needs about one candidate architecture in one regime.
+    """One candidate architecture in one declared workload regime.
 
-    Ratios compare the candidate with the conventional baseline at the decision corner.
-    ``scaling_arch``/``scaling_regime`` say what the scaling efficiency was measured for; the
-    gate accepts it only if they are the candidate's own.
+    ``model`` names the model the regime is about: evidence measured on any other model (a
+    small test model, say) cannot qualify the candidate.
     """
 
     arch: str
     name: str
     regime: str
-    throughput_ratio: float | None
-    energy_ratio: float | None
-    cost_efficiency_ratio: float | None
-    scaling_efficiency: float | None = None
-    scaling_arch: str | None = None
-    scaling_regime: str | None = None
+    model: str = ""
     corner: str = "pessimistic"
 
     @property
@@ -103,51 +99,70 @@ class GateDecision:
                 "criteria": [c.to_json() for c in self.criteria]}  # fmt: skip
 
 
-def _status(meets: bool | None, level: EvidenceLevel | None, required: EvidenceLevel) -> str:
-    """Pass only on sufficient evidence; insufficient evidence can still show a failure."""
-    if meets is None or level is None:
-        return "not_evaluated"
-    if not meets:
-        return "fail"
-    return "pass" if level >= required else "not_evaluated"
+def simulation_receipts(candidate: Candidate, *, level: EvidenceLevel, bindings: Mapping[str, str],
+                        values: Mapping[str, float], raw: Mapping[str, Any] | None = None,
+                        baseline: str = "A") -> list[Receipt]:  # fmt: skip
+    """Receipts for simulated metrics of ``candidate`` (one per metric)."""
+    return [Receipt(metric, float(value), level, candidate.arch, candidate.regime, baseline, dict(bindings),
+                    raw=dict(raw or {}), note=f"{candidate.corner} corner") for metric, value in values.items()]  # fmt: skip
 
 
-def _ratio(name: str, value: float | None, minimum: float, what: str, level: EvidenceLevel) -> Criterion:
-    if value is None or not math.isfinite(value):
-        return Criterion(name, f">= {minimum:g}x", "no candidate could be evaluated", "not_evaluated", None, E2)
-    status = _status(value >= minimum, level, E2)
-    return Criterion(name, f">= {minimum:g}x", f"{value:.2f}x {what}", status, level, E2)
+def scheduler_receipt(candidate: Candidate, *, plans_per_batch: float, batch_time_s: float,
+                      costs: Mapping[str, float], limit: float) -> Receipt:  # fmt: skip
+    """An E0 estimate of scheduler overhead: plan evaluations per batch times an *assumed* cost
+    per evaluation, relative to the batch time.  No production scheduler exists to measure, so
+    this can show a failure (even the optimistic cost is too slow) but never a pass."""
+    if batch_time_s <= 0 or plans_per_batch < 0:
+        raise ValueError("batch time must be positive and plan evaluations non-negative")
+    low = plans_per_batch * costs["optimistic"] / batch_time_s
+    high = plans_per_batch * costs["pessimistic"] / batch_time_s
+    raw = {"high": high, "plans_per_batch": float(plans_per_batch), "cost_low_ns": costs["optimistic"] * 1e9,
+           "cost_high_ns": costs["pessimistic"] * 1e9,
+           # with no plan evaluations at all there is no per-evaluation budget to state
+           "budget_ns": limit * batch_time_s / plans_per_batch * 1e9 if plans_per_batch > 0 else None}  # fmt: skip
+    return Receipt("scheduler_overhead", low, E0, candidate.arch, candidate.regime, raw=raw,
+                   note="estimate: assumed cost per plan evaluation; no production scheduler exists")  # fmt: skip
+
+
+def _criterion(name: str, threshold: str, q: Qualification, describe) -> Criterion:
+    if q.value is None:
+        result = "no usable evidence: " + (q.reasons[0] if q.reasons else "none recorded")
+    else:
+        result = describe(q.value)
+        if q.status == "not_evaluated" and q.reasons:
+            result += f" ({q.reasons[-1]})"
+    return Criterion(name, threshold, result, q.status, q.level, q.required)
 
 
 def evaluate_gate(
     candidate: Candidate,
     thresholds: Mapping[str, Any],
     *,
+    receipts: ReceiptRegistry,
     calibration: CalibrationReport,
     comparison_on_calibrated_profile: bool,
-    plans_per_batch: float | None,
-    batch_time_s: float | None,
-    numeric_rel_error: float | None,
-    real_weights_verified: bool = False,
-    model_quality_measured: bool = False,
+    current: Mapping[str, str] | None = None,
 ) -> GateDecision:
-    """Evaluate every criterion for one candidate in one regime.
+    """Evaluate every criterion for one candidate in one regime, from receipts.
 
-    Simulated evidence is E2 only when the calibration criterion passes *and* the comparison
-    ran on the profile that was validated; a validated profile of one machine says nothing
-    about results simulated on another.
+    ``current`` holds the identities receipts must still match (simulator source, profile,
+    estimates, validation).  Simulated evidence counts as E2 only through receipts bound to a
+    passing validation of the profile the comparison ran on.
     """
-    calibrated = calibration.status == "pass" and comparison_on_calibrated_profile
-    sim = E2 if calibrated else E1
+    current = dict(current or {})
     decision = GateDecision(candidate.regime, candidate.label)
     add = decision.criteria.append
+
+    def q(metric, meets, required, must_bind=None):
+        return qualify(metric, receipts, candidate=candidate.arch, regime=candidate.regime, meets=meets,
+                       required=required, current=current, must_bind=must_bind)  # fmt: skip
 
     # -- 1. the simulator's own accuracy, on held-out measurements --------------------------
     v = calibration.validation
     if calibration.status == "not_evaluated":
-        result = f"{v.n} validation measurements (at least {thresholds['min_validation_measurements']} needed)"
+        result = f"{v.n} validation benchmarks (at least {thresholds['min_validation_measurements']} needed)"
     else:
-        result = f"median {v.median:.1%}, p95 {v.p95:.1%} over {v.n} held-out measurements"
+        result = f"median {v.median:.1%}, p95 {v.p95:.1%} over {v.n} held-out benchmarks"
     status = calibration.status
     if status == "pass" and not comparison_on_calibrated_profile:
         status = "not_evaluated"
@@ -156,63 +171,47 @@ def evaluate_gate(
                   f"<= {thresholds['calibration_median_max']:.0%} median, <= {thresholds['calibration_p95_max']:.0%} p95",
                   result, status, E3 if v.n else None, E3))  # fmt: skip
 
-    # -- 2-4. the candidate against the conventional baseline --------------------------------
+    # -- 2-5. the candidate against the conventional baseline, and its own scaling ------------
     versus = f"the conventional baseline ({candidate.label}, {candidate.corner} estimates)"
-    add(_ratio("Throughput improvement", candidate.throughput_ratio, thresholds["throughput_min"], versus, sim))
-    add(_ratio("Energy efficiency", candidate.energy_ratio, thresholds["energy_min"], versus, sim))
-    add(_ratio("Cost efficiency", candidate.cost_efficiency_ratio, thresholds["cost_efficiency_min"], versus, sim))
-
-    # -- 5. scaling, of this candidate in this regime -------------------------------------------
+    for metric, name, key in (("throughput_ratio", "Throughput improvement", "throughput_min"),
+                              ("energy_ratio", "Energy efficiency", "energy_min"),
+                              ("cost_efficiency_ratio", "Cost efficiency", "cost_efficiency_min")):  # fmt: skip
+        minimum = thresholds[key]
+        add(_criterion(name, f">= {minimum:g}x", q(metric, lambda x, m=minimum: x >= m, E2),
+                       lambda x: f"{x:.2f}x {versus}"))  # fmt: skip
     minimum = thresholds["scaling_efficiency_min"]
-    name, threshold = "Four-module scaling efficiency", f">= {minimum:.0%}"
-    if candidate.scaling_efficiency is None or not math.isfinite(candidate.scaling_efficiency):
-        add(Criterion(name, threshold, "not measured", "not_evaluated", None, E2))
-    elif candidate.scaling_arch != candidate.arch or candidate.scaling_regime != candidate.regime:
-        add(Criterion(name, threshold,
-                      f"{candidate.scaling_efficiency:.0%} was measured for {candidate.scaling_arch} in "
-                      f"{candidate.scaling_regime!r}, not for the candidate in this regime",
-                      "not_evaluated", None, E2))  # fmt: skip
-    else:
-        ok = candidate.scaling_efficiency >= minimum
-        add(Criterion(name, threshold, f"{candidate.scaling_efficiency:.0%} from one to four modules",
-                      _status(ok, sim, E2), sim, E2))  # fmt: skip
+    add(_criterion("Four-module scaling efficiency", f">= {minimum:.0%}",
+                   q("scaling_efficiency", lambda x: x >= minimum, E2),
+                   lambda x: f"{x:.0%} from one to four modules"))  # fmt: skip
 
     # -- 6. scheduler overhead: only a production scheduler can be measured --------------------
     limit = thresholds["scheduler_overhead_max"]
-    costs = thresholds["plan_evaluation_cost_s"]
-    if plans_per_batch is None or not batch_time_s:
-        add(Criterion("Scheduler overhead", f"<= {limit:.0%}", "not measured", "not_evaluated", None, E3))
-    else:
-        low = plans_per_batch * costs["optimistic"] / batch_time_s
-        high = plans_per_batch * costs["pessimistic"] / batch_time_s
-        budget = limit * batch_time_s / plans_per_batch
-        result = (f"{low:.1%} to {high:.1%} for {plans_per_batch:.0f} plan evaluations per batch at an assumed "
-                  f"{costs['optimistic'] * 1e9:.0f}-{costs['pessimistic'] * 1e9:.0f} ns each; needs "
-                  f"<= {budget * 1e9:.0f} ns per evaluation")  # fmt: skip
-        meets = False if low > limit else (True if high <= limit else None)
-        status = "fail" if meets is False else "not_evaluated"  # an estimate can fail, never pass
-        add(Criterion("Scheduler overhead", f"<= {limit:.0%}", result, status, E0, E3,
-                      "no production scheduler exists"))  # fmt: skip
+    sched = q("scheduler_overhead", lambda x: x <= limit, E3)
+    best = next((r for r in receipts.find("scheduler_overhead", candidate=candidate.arch, regime=candidate.regime)
+                 if r.receipt_id == sched.receipt_id), None)  # fmt: skip
 
-    # -- 7. numerical correctness on the real model ----------------------------------------------
+    def describe_overhead(x: float) -> str:
+        raw = best.raw if best is not None else {}
+        if "high" not in raw:
+            return f"{x:.1%}"
+        text = (f"{x:.1%} to {raw['high']:.1%} for {raw['plans_per_batch']:.0f} plan evaluations per batch at an "
+                f"assumed {raw['cost_low_ns']:.0f}-{raw['cost_high_ns']:.0f} ns each")  # fmt: skip
+        if raw.get("budget_ns") is None:
+            return text + "; no plan evaluations, so no per-evaluation budget"
+        return text + f"; needs <= {raw['budget_ns']:.0f} ns per evaluation"
+
+    add(_criterion("Scheduler overhead", f"<= {limit:.0%}", sched, describe_overhead))
+
+    # -- 7-8. numerical correctness and model quality, on the model the regime is about --------
     tolerance = thresholds["numeric_rel_l2_max"]
-    name, threshold = "Numerical correctness", f"relative error <= {tolerance:g}"
-    if numeric_rel_error is None:
-        add(Criterion(name, threshold, "not measured", "not_evaluated", None, E3))
-    elif numeric_rel_error > tolerance:
-        add(Criterion(name, threshold, f"{numeric_rel_error:.1e} on the small numeric model", "fail", E3, E3))
-    else:
-        scope = "the real model" if real_weights_verified else "a small random-weight model; real weights not run"
-        add(Criterion(name, threshold, f"{numeric_rel_error:.1e} on {scope}",
-                      "pass" if real_weights_verified else "not_evaluated", E3, E3,
-                      "" if real_weights_verified else "wrong model"))  # fmt: skip
-
-    # -- 8. model quality: an argument is not a measurement -----------------------------------
-    argument = ("the runtime never selects experts and exchanges only lossless-equivalent weight formats; "
-                "dataflows differ only in FP32 summation order")  # fmt: skip
-    if model_quality_measured:
-        add(Criterion("Model quality", "no material degradation", "measured parity", "pass", E3, E3))
-    else:
-        add(Criterion("Model quality", "no material degradation", f"not measured ({argument})",
-                      "not_evaluated", E0, E3, "by construction"))  # fmt: skip
+    bind = {"model": candidate.model} if candidate.model else None
+    add(_criterion("Numerical correctness", f"relative error <= {tolerance:g}",
+                   q("numerical_error", lambda x: x <= tolerance, E3, bind), lambda x: f"{x:.1e}"))  # fmt: skip
+    quality_max = thresholds["model_quality_relative_perplexity_max"]
+    quality = q("model_quality", lambda x: x <= quality_max, E3, bind)
+    if not receipts.find("model_quality", candidate=candidate.arch, regime=candidate.regime):
+        quality.reasons.insert(0, "not measured (the runtime never selects experts and exchanges only "
+                                  "lossless-equivalent weight formats; that is an argument, not a measurement)")  # fmt: skip
+    add(_criterion("Model quality", f"perplexity <= {quality_max:g}x the reference",
+                   quality, lambda x: f"{x:.3f}x the reference perplexity"))  # fmt: skip
     return decision

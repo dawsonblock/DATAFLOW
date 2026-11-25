@@ -8,7 +8,7 @@ import pytest
 
 from basp.dse.hardware import CORNERS
 from basp.experiments import investigations as inv
-from basp.experiments import report_v3
+from basp.experiments import report_v4
 from basp.experiments.calibrate import calibration_status
 from basp.experiments.gate import evaluate_gate
 from basp.experiments.profiles import load_json
@@ -146,7 +146,7 @@ def test_architecture_table_carries_a_range_for_every_figure(lab):
                 assert own["vs_a"]["throughput"] == pytest.approx(own["tokens_per_s"] / ref["tokens_per_s"])
                 assert own["vs_a"]["cost_efficiency"] == pytest.approx(
                     own["tokens_per_s_per_kusd"] / ref["tokens_per_s_per_kusd"])  # fmt: skip
-    text = report_v3.render_architectures(rows)
+    text = report_v4.render_architectures(rows)
     assert text.count("\n") == 9 and "H Hierarchical" in text and "throughput vs A" in text
 
 
@@ -194,7 +194,7 @@ def test_workload_suite_reports_each_workload_type_separately():
 
 # -- report pieces -----------------------------------------------------------------------------------
 def test_numeric_verification_covers_three_dataflow_families():
-    correct = report_v3.correctness()
+    correct = report_v4.correctness()
     assert correct["all_ok"] and len(correct["runs"]) == 3
     # with the reduction order fixed, the graph form must not change a single bit
     assert correct["fused_equals_unfused"]
@@ -207,7 +207,7 @@ def test_numeric_verification_covers_three_dataflow_families():
 
 
 def test_calibration_plan_predicts_the_requested_benchmarks():
-    plan = report_v3.calibration_plan()
+    plan = report_v4.calibration_plan()
     assert len(plan) == 8 and {r["model"] for r in plan} == {"Qwen3-4B", "Qwen3-8B", "Qwen3-14B",
                                                              "Qwen3-30B-A3B"}  # fmt: skip
     speeds = {(r["model"], r["gpu_layers"]): r["predicted_tokens_per_s"] for r in plan}
@@ -237,7 +237,7 @@ def test_exploration_summary_compares_at_equal_cost_and_equal_power():
         "front": [{**fast_h, "corners": {}}, {**a12, "corners": {}}, {**a24, "corners": {}}],
         "evaluated": 5, "feasible_designs": 100, "space_size": 400, "method": "evolutionary",
     }  # fmt: skip
-    summary = report_v3.summarise_dse(data)
+    summary = report_v4.summarise_dse(data)
     assert summary["feasible_evaluated"] == 4 and summary["front_size"] == 3
     assert [e["metrics"]["cost_usd"] for e in summary["front"]] == [1700.0, 2800.0, 9000.0]
     assert summary["front_archs"] == {"A": 2, "E": 0, "H": 1}
@@ -248,27 +248,51 @@ def test_exploration_summary_compares_at_equal_cost_and_equal_power():
     assert budgets["10000"]["best"] is fast_h and budgets["10000"]["best_conventional"] is a24
     power = summary["equal_power"]
     assert power["130"]["best"] is a12 and power["160"]["best"] is a24 and power["200"]["best"] is a24
-    assert report_v3._design_text(a24["config"]) == "A, 24 GiB GPU"
-    assert report_v3._design_text(fast_h["config"]) == (
+    assert report_v4._design_text(a24["config"]) == "A, 24 GiB GPU"
+    assert report_v4._design_text(fast_h["config"]) == (
         "H, 12 GiB GPU + 4 x 32 GiB modules, 2 ch, 1024 lanes, 16 GB/s, 2 replicas")  # fmt: skip
-    assert report_v3._design_text(cheap_e["config"]).startswith("E, 4 x 32 GiB modules")
+    assert report_v4._design_text(cheap_e["config"]).startswith("E, 4 x 32 GiB modules")
 
 
 def test_gate_table_states_status_and_evidence_for_every_criterion():
-    from basp.experiments.gate import Candidate
+    from basp.evidence import EvidenceLevel, ReceiptRegistry
+    from basp.experiments.gate import Candidate, scheduler_receipt, simulation_receipts
 
-    regime = "30B MoE, single-user decoding"
-    decision = evaluate_gate(
-        Candidate("H", "Hierarchical", regime, throughput_ratio=1.4, energy_ratio=0.8, cost_efficiency_ratio=0.3,
-                  scaling_efficiency=0.72, scaling_arch="H", scaling_regime=regime),
-        load_json("hardware_gate"), calibration=calibration_status(None), comparison_on_calibrated_profile=False,
-        plans_per_batch=60.0, batch_time_s=1e-4, numeric_rel_error=4e-4,
-    )  # fmt: skip
+    thresholds = load_json("hardware_gate")
+    cand = Candidate("H", "Hierarchical", "30B MoE, single-user decoding", model="qwen3-30b-a3b")
+    bindings = {"source": "s", "config": "c"}
+    registry = ReceiptRegistry(simulation_receipts(cand, level=EvidenceLevel.E1, bindings=bindings, values={
+        "throughput_ratio": 1.4, "energy_ratio": 0.8, "cost_efficiency_ratio": 0.3, "scaling_efficiency": 0.72}))
+    registry.add(scheduler_receipt(cand, plans_per_batch=60.0, batch_time_s=1e-4,
+                                   costs=thresholds["plan_evaluation_cost_s"], limit=0.05))  # fmt: skip
+    decision = evaluate_gate(cand, thresholds, receipts=registry, calibration=calibration_status(None),
+                             comparison_on_calibrated_profile=False, current=bindings)  # fmt: skip
     # three ratios fail even on uncalibrated evidence; nothing else can pass without better evidence
     assert decision.verdict == "NO-GO (3 criteria failed, 5 not evaluated)"
-    text = report_v3.render_gate(decision)
+    text = report_v4.render_gate(decision)
     lines = text.splitlines()
     assert len(lines) == 2 + 8
     assert lines[0].startswith("| criterion | threshold | result | status | evidence | required")
-    assert "| not evaluated |" in text and "| fail |" in text and "by construction" in text
+    assert "| not evaluated |" in text and "| fail |" in text and "argument, not a measurement" in text
     assert "E1 uncalibrated simulation" in text and "E2 simulation" not in text and "| E3 |" in text
+
+
+def test_report_compares_cache_policies_and_flags_stale_runtime_evidence(tmp_path):
+    from basp.workloads.zoo import MODELS
+
+    caching = report_v4.expert_cache_policies(MODELS["qwen3-30b-a3b"], "desktop_gpu12", steps=8,
+                                              capacities_gib=(2,))  # fmt: skip
+    policies = {r["policy"] for r in caching["rows"]}
+    assert policies == {"LRU", "LFU", "cost-aware", "predictive", "none (CPU only)", "unbounded cache"}
+    assert all(r["capacity_gib"] == 2 and r["ms_per_token"] > 0 for r in caching["rows"])
+    # a recorded parity result produced by other runtime code is reported as stale
+    folder = tmp_path / "verification" / "m"
+    folder.mkdir(parents=True)
+    record = {"model": "m", "file": {"name": "m.gguf"}, "verdict": "pass", "reasons": [], "numerical_error": 1e-6,
+              "hidden": {"rel_l2_max": 1e-6, "layers_compared": 1}, "routing": None,
+              "generation": {"identical": True, "tokens": 4}, "telemetry": {"decode": {"tokens_per_s": 1.0}},
+              "runtime_fingerprint": "an older runtime"}  # fmt: skip
+    (folder / "parity.json").write_text(json.dumps(record))
+    [row] = report_v4.runtime_verification(tmp_path)
+    assert row["stale"] and row["verdict"] == "pass"
+    assert report_v4.runtime_verification(tmp_path / "nothing") == []

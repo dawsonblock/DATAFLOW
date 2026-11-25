@@ -49,9 +49,22 @@ def pick(estimate: Any, corner: str) -> float:
     return float(estimate)
 
 
+def shares_host_memory(base: Topology) -> bool:
+    """Whether the base's GPU is integrated: it shares the host's memory domain (Apple M-series).
+
+    On such a machine there is no separate GPU memory to size or buy: the GPU uses the host's
+    memory pool and bus.
+    """
+    data = base.to_dict()
+    host = next((d for d in data["devices"] if d["name"] == data["host"]), None)
+    gpus = [d for d in data["devices"] if d["kind"] == "GPU"]
+    return bool(host and host.get("memory_domain") and gpus
+                and gpus[0].get("memory_domain") == host["memory_domain"])  # fmt: skip
+
+
 @dataclass(frozen=True)
 class HardwareDesign:
-    gpu_gib: int = 12  # 0: no GPU
+    gpu_gib: int = 12  # 0: no GPU; with integrated_gpu, the GPU shares the host's memory pool
     modules: int = 0
     module_gib: int = 32
     channels: int = 2  # DDR5 channels per module
@@ -63,8 +76,11 @@ class HardwareDesign:
     persistent: bool = False  # resident kernels on GPU and modules (no launch, no gating)
     sram_mib: int = 16
     host_gib: int = 64
+    integrated_gpu: bool = False  # the GPU shares host memory (no GPU class, no separate price)
 
     def __post_init__(self) -> None:
+        if self.integrated_gpu and self.gpu_gib not in (0, self.host_gib):
+            raise DesignError("an integrated GPU uses the host's memory: gpu_gib must be 0 (unused) or host_gib")
         if self.fabric not in ("star", "local"):
             raise DesignError(f"unknown fabric {self.fabric!r}")
         if min(self.gpu_gib, self.modules) < 0 or self.modules and min(
@@ -83,7 +99,7 @@ class HardwareDesign:
     def pcie_lanes(self, estimates: Mapping[str, Any]) -> int:
         """Host PCIe lanes the design occupies."""
         per_lane = float(estimates["pcie_bytes_per_s_per_lane"])
-        gpu = 16 if self.gpu_gib else 0
+        gpu = 16 if self.gpu_gib and not self.integrated_gpu else 0
         if self.fabric == "local":
             return 16 if (self.modules or self.gpu_gib) else 0
         return gpu + self.modules * math.ceil(self.link_gbps * 1e9 / per_lane)
@@ -94,7 +110,7 @@ class HardwareDesign:
         total = pick(host["cost_base_usd"], corner) + self.host_gib * pick(host["cost_per_gib_usd"], corner)
         if self.pcie_lanes(estimates) > int(host["desktop_pcie_lanes"]):
             total += pick(host["workstation_surcharge_usd"], corner)
-        if self.gpu_gib:
+        if self.gpu_gib and not self.integrated_gpu:  # an integrated GPU is part of the host's price
             total += pick(gpu_class(estimates, self.gpu_gib)["cost_usd"], corner)
         total += self.modules * (
             pick(module["cost_base_usd"], corner)
@@ -119,11 +135,25 @@ class HardwareDesign:
             raise DesignError(f"unknown corner {corner!r}")
         data = base.to_dict()
         host_name = data["host"]
+        unified = shares_host_memory(base)
+        if self.gpu_gib and unified != self.integrated_gpu:
+            raise DesignError("the base profile's GPU " + ("shares host memory: set integrated_gpu" if unified
+                              else "has its own memory: integrated_gpu does not apply"))  # fmt: skip
         devices = []
         gpu_name = None
+        host_dev = next(d for d in data["devices"] if d["name"] == host_name)
         for dev in data["devices"]:
             if dev["kind"] == "CPU" and dev["name"] == host_name:
                 devices.append({**dev, "mem_capacity": self.host_gib * GiB})
+            elif dev["kind"] == "GPU" and self.gpu_gib and gpu_name is None and unified:
+                # one memory domain: the GPU sees the host's pool, bus and energy per byte
+                gpu_name = dev["name"]
+                power = {**dev.get("power", {}),
+                         "joules_per_mem_byte": host_dev.get("power", {}).get("joules_per_mem_byte")}  # fmt: skip
+                if power["joules_per_mem_byte"] is None:
+                    power.pop("joules_per_mem_byte")
+                devices.append({**dev, "mem_capacity": self.host_gib * GiB, "mem_bandwidth": host_dev["mem_bandwidth"],
+                                "power": power, "persistent": self.persistent or dev.get("persistent", False)})  # fmt: skip
             elif dev["kind"] == "GPU" and self.gpu_gib and gpu_name is None:
                 gpu_name = dev["name"]
                 # the base profile's GPU is the base class; other classes scale its rates

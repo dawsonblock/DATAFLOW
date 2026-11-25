@@ -20,7 +20,7 @@ from dataclasses import replace
 from typing import Any
 
 from basp.core.tensor import CompressionFormat, FormatTable
-from basp.dse.hardware import CORNERS, DesignError, HardwareDesign
+from basp.dse.hardware import CORNERS, DesignError, HardwareDesign, shares_host_memory
 from basp.dse.pareto import Objective
 from basp.dse.space import DesignSpace, Param
 from basp.experiments.architectures import ArchitectureError, configure
@@ -103,9 +103,9 @@ def seed_designs(space: DesignSpace) -> list[dict[str, Any]]:
     return [space.canonical(s) for s in seeds if space.feasible(s)]
 
 
-def to_design(config: Mapping[str, Any], host_gib: int = 64) -> HardwareDesign:
+def to_design(config: Mapping[str, Any], host_gib: int = 64, integrated_gpu: bool = False) -> HardwareDesign:
     arch = config["arch"]
-    return HardwareDesign(
+    return HardwareDesign(integrated_gpu=integrated_gpu,
         gpu_gib=int(config["gpu_gib"]), modules=int(config["modules"]),
         module_gib=int(config["module_gib"]), channels=int(config["channels"]),
         lanes=int(config["lanes"]), link_gbps=float(config["link_gbps"]),
@@ -149,7 +149,7 @@ def evaluate_design(config: Mapping[str, Any], *, workload: Mapping[str, Any] | 
     formats = {CompressionFormat[k]: float(v) for k, v in workload.get("formats", {}).items()}
     base, estimates = _base(base_profile)
     try:
-        design = to_design(config, host_gib)
+        design = to_design(config, host_gib, integrated_gpu=shares_host_memory(base))
         topology = design.topology(base, estimates, corner)
         built = configure(config["arch"], topology, prior, replicas=int(config.get("replicas", 1)))
         if formats:

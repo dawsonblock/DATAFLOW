@@ -23,17 +23,17 @@ evidence.**
 
 ## Releases
 
-Revised after the v0.2 audit: limited real software execution comes *before* the hardware
-decision, because runtime measurements are what make that decision credible.
+Revised after the v0.2 audit, and again for v0.4: real software execution comes *before* the
+hardware decision, because runtime measurements are what make that decision credible.
 
 | Release | Objective | Exit requirement | State |
 |---|---|---|---|
-| v0.3 | Repair and evidence infrastructure | Trustworthy, reproducible results; missing or stale evidence cannot produce GO | **Done** (below) |
-| v0.4 | Hardware calibration | Held-out prediction error within thresholds on both machines | **Ready to run**: `benchmarks.run_calibration` on each machine, `notebooks/calibrate_colab.ipynb` for a Colab T4; nothing measured yet |
-| v0.5 | Real model execution | Tokens from pretrained GGUF models; intermediate tensors and logits verified against a reference; quality parity | Not started (GGUF header reader and backend contract in place) |
-| v0.6 | Native execution backends | CPU (SIMD), CUDA and Metal backends behind the `Payload` contract; compiled C++ scheduler | Not started |
-| v0.7 | Adaptive memory and expert management | Measured improvement over a tuned llama.cpp (incl. `--n-cpu-moe`) on the same machine | Not started |
-| v0.8 | Distributed execution; architecture I | Efficient multi-device scaling, measured; adaptive hierarchical tensor-parallel execution against H and E | Not started |
+| v0.3 | Repair and evidence infrastructure | Trustworthy, reproducible results; missing or stale evidence cannot produce GO | **Done** |
+| v0.4 | Evidence-gated heterogeneous execution foundation | Receipt-based evidence; physical memory domains; a runtime that executes real GGUF models and is verified against a reference | **Done for the CPU** (below); calibration still unmeasured |
+| Calibration | Held-out prediction error within thresholds on the calibration machines | `benchmarks.run_calibration` on each machine | **Ready to run**; nothing measured (needs the machines) |
+| v0.5 | Native execution backends | C++ CPU (SIMD), CUDA and Metal/GGML backends behind `ExecutionBackend`, passing the same parity harness | Not started (declared, unavailable stubs) |
+| v0.6 | Adaptive memory and expert management on real hardware | Measured improvement over a tuned llama.cpp (incl. `--n-cpu-moe`) on the same machine | Components in place (memory domains, cache policies); not measured |
+| v0.7 | Architecture I and distributed execution | Adaptive hierarchical execution with cost `C(p) = T + λE + μR + γU`, measured against H and E | Not started (deferred from v0.4) |
 | v0.9 | Conditional accelerator RTL | Synthesis and formal verification of a quantised matrix-vector unit | Blocked on the gate |
 | v1.0 | Validated inference product | Reproducible hardware benchmarks | Blocked on the gate |
 
@@ -48,6 +48,26 @@ decision, because runtime measurements are what make that decision credible.
 
 Results on existing GPUs are never presented as measurements of hypothetical modules: before a
 prototype exists, module claims are at most E2. Every gate criterion states its required level.
+
+## Release v0.4 — Evidence-Gated Heterogeneous Execution
+
+| Item | Where | Evidence |
+|---|---|---|
+| Evidence v2: content-addressed receipts binding each value to its identities (source, configuration, profile, validation, machine, model, weights, runtime, benchmark); metric-specific qualification; staleness | `basp/evidence/` | `tests/test_v04_evidence.py`: invalid values (NaN, inf, negative) rejected; a throughput receipt never qualifies energy; stale or other-model receipts rejected |
+| Gate decided from receipts | `basp/experiments/gate.py`, report section 1 | E1 simulation can fail a criterion, never pass it; an E0 scheduler estimate never passes; missing quality is "not evaluated" |
+| Calibration repairs: repeated runs merge into one benchmark; each machine judged alone; stale measurements (changed executable or weights, full SHA-256) excluded; profiles qualify only by fingerprint; run keys include repetitions and identities | `basp/calibration/validate.py`, `basp/experiments/calibrate.py`, `benchmarks/run_calibration.py` | eight repeats count once; a machine cannot borrow another's benchmarks; a tuned profile is not validated |
+| Calibration coverage and performance-curve schema | `basp/calibration/coverage.py`, `curves.py` | the report lists which regimes each machine's validation covers |
+| Physical memory domains: shared accounting, budget invariant, admission control with pressure feedback, refcounted eviction safety, asynchronous migration, prefetch budget, hierarchy | `basp/memory/` | `tests/test_v04_memory.py` (2,000-step random churn keeps the invariant) |
+| Expert-cache policies LRU, LFU, cost-aware `V_e = (N_e(T_cpu − T_gpu) − T_migration)/M_e`, predictive; evaluation harness | `basp/memory/expert_cache.py`, report section 10 | E1 comparison on synthetic routing |
+| Unified-memory design repair | `basp/dse/hardware.py` | designs on the M2 base share one pool; the integrated GPU is not priced separately |
+| Physical runtime, separate from the simulator: device manager, execution plans that fail before running, dispatcher, command queues, sessions, generation, telemetry; `ExecutionBackend` (capabilities, allocate, upload, submit, synchronize, release, telemetry) | `basp/runtime/`, `basp/backends/execution.py` | unavailable backends refuse every call |
+| Real GGUF execution: memory-mapped tensors, dequantisation of 11 formats (bit-identical to `gguf`), Qwen3 dense and MoE forward pass, KV cache, greedy and sampled generation | `basp/models/quants.py`, `gguf_tensors.py`, `basp/backends/cpu/` | `tests/test_v04_runtime.py` |
+| Verification harness against transformers: logits, layer outputs, routing, generation, perplexity, parity report with receipts | `basp/verification/`, `benchmarks/verify_runtime.py` | Qwen3-0.6B Q8_0: relative L2 2.8e-6, 16 identical greedy tokens; tiny dense and MoE models in CI; a broken runtime fails |
+
+Deferred, and stated as such everywhere: architecture I (adaptive hierarchical execution); the
+native C++, CUDA and Metal engine (the backends exist only as unavailable declarations — there is
+no GPU inference); a real MoE model end to end (the float32 runtime would need about 120 GiB for
+Qwen3-30B-A3B); a native tokenizer; prefetching inside the runtime.
 
 ## Release v0.3 — Evidence-Gated Adaptive Execution Foundation
 
@@ -146,8 +166,8 @@ Proposed acceptance thresholds — targets, not results.
 | Cost efficiency | >= 2x tokens/s per dollar |
 | Four-module scaling efficiency | >= 70% |
 | Scheduler overhead | <= 5% |
-| Numerical correctness | Within predefined reference tolerances |
-| Model quality | No material degradation |
+| Numerical correctness | Relative L2 error of logits <= 0.002 against the reference, on the regime's model |
+| Model quality | Perplexity <= 1.01x the reference's on the same weights (threshold added in v0.4; none changed) |
 
 Rules of evidence:
 

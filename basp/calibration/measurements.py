@@ -88,10 +88,20 @@ class Measurement:
             raise ValueError(f"{where}: stddev_tokens_per_s must be >= 0")
 
     @property
+    def workload_key(self) -> tuple:
+        """What is computed: model, phase, context and batch -- the same on every machine."""
+        return (self.model, self.kind, self.context_len, self.batch)
+
+    @property
+    def execution_key(self) -> tuple:
+        """How and where: machine, weight file size per parameter, offload split and threads."""
+        return (self.machine, self.bits_per_weight, self.n_gpu_layers, self.n_cpu_moe, self.threads)
+
+    @property
     def signature(self) -> tuple:
-        """Identity of the benchmark itself, independent of when or how often it was run."""
-        return (self.machine, self.kind, self.model, self.bits_per_weight, self.n_gpu_layers,
-                self.n_cpu_moe, self.context_len, self.batch, self.threads)  # fmt: skip
+        """Identity of the benchmark (workload on an execution setup), independent of when or how
+        often it was run: repetitions share a signature."""
+        return (*self.execution_key, *self.workload_key)
 
     def to_json(self) -> dict[str, Any]:
         return asdict(self)

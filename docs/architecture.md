@@ -1,4 +1,4 @@
-# BASP Dataflow v0.3 — architecture of the implementation
+# BASP Dataflow v0.4 — architecture of the implementation
 
 This document describes what is implemented in this repository and how the pieces map onto the
 BASP Adaptive Dataflow Architecture. The first part covers the dataflow engine (v0.1); then
@@ -234,6 +234,56 @@ All eight reproduce the float64 reference on the small numeric model
 * Prompt programs (`ModelProgram(prompt=True)`) — the rows of a batch are one prompt sharing one KV
   cache, as llama-bench's prompt-processing test is.
 
+## Evidence v2, memory domains and the physical runtime (v0.4)
+
+**Receipts.** `basp/evidence/` is a package: `identity` (source fingerprint, file and profile
+identities: full-content SHA-256), `manifests` (provenance of configurations, files and whole
+directories), `schema` and `validation` (metrics with units and valid ranges: NaN, infinities and
+negative errors are rejected), `receipts` (one metric, one value, one level, one candidate and
+regime, the identities it is bound to, its raw data; the id is the hash of the content),
+`registry` and `qualification`. A criterion is qualified from receipts of *its* metric, candidate
+and regime only; a receipt missing the bindings its level requires (E1: source, config; E2: plus
+profile and validation; E3: machine, model, runtime, benchmark), bound to an identity that has
+changed since, or about another model, is rejected with a reason. Of the rest the highest level
+counts: a miss fails at any level, a pass needs the required level.
+
+**Memory domains.** `basp/memory/domains.py` models physical pools. Devices that share memory
+share one `MemoryDomain`; allocations are charged to weights, KV cache, activations or workspace;
+reserved working memory is never handed out, and `check_invariant` verifies that the categories
+plus the reservation never exceed the capacity and that accounting matches the allocator to the
+byte. Blocks are reference counted: a referenced or pinned block cannot be freed or evicted, and
+an eviction that cannot reach its target frees nothing. `admission` reserves a request's whole KV
+cache when it is admitted (evicting unreferenced cached weights first, keeping a margin under
+pressure, refusing otherwise); `migration` copies between domains with the source held and the
+destination hidden until the copy completes; `prefetch` issues migrations within a byte budget and
+reports wasted traffic; `expert_cache` compares caching policies on routing traces.
+
+**The physical runtime.** `basp/runtime/` executes real models and shares no code with the
+simulator's timing model:
+
+```
+Engine(path)            GGUF -> ModelConfig; DeviceManager.discover(); make_plan(); WeightStore
+  DeviceManager         every backend, available or not (CUDA, Metal, GGML, remote: unavailable)
+  ExecutionPlan         operation groups -> backend; fails with UnsupportedOperation before running
+  Dispatcher            op -> CommandQueue of the assigned backend -> Completion; telemetry
+  WeightStore           dense weights resident (pinned, charged to the host domain); experts on demand, LRU
+  Qwen3Model            embedding, RMSNorm, Q/K/V, per-head q/k norm, NEOX RoPE, GQA attention with KV
+                        cache, SwiGLU or softmax top-k router + experts, final norm, logits
+  Session               KV cache admitted against the domain; prefill / step
+  generate()            greedy or seeded sampling, stop tokens
+```
+
+Backends implement `ExecutionBackend` (`basp/backends/execution.py`): `capabilities`,
+`allocate`, `upload`, `submit`, `synchronize`, `release`, `telemetry`. The CPU backend runs NumPy
+float32 kernels (`basp/backends/cpu/kernels.py`); weights are dequantised by
+`basp/models/quants.py` (bit-identical to the reference `gguf` package for every supported format).
+
+**Verification.** `basp/verification/` loads the same GGUF into transformers (weights dequantised
+by the reference package, not the runtime's code) and compares logits per position, each layer's
+output, each expert selection, greedy generation through the KV cache against full recomputation,
+and perplexity. `parity_report.run_parity` returns all of it with a verdict and E3 receipts bound to
+the machine, the model and its weights' SHA-256, the runtime's source fingerprint and the benchmark.
+
 ## Extending
 
 * **A calibrated machine**: follow [calibration.md](calibration.md), then pass `--base-profile`
@@ -245,5 +295,8 @@ All eight reproduce the float64 reference on the small numeric model
 * **A new hardware profile**: add a JSON file to `configs/` (see `desktop_gpu12.json`).
 * **A recorded routing trace**: save it in the `RoutingTrace` JSON format and pass it to
   `Setup.run`.
+* **A new execution backend**: implement `ExecutionBackend` and declare in `capabilities()` the
+  operations it runs; register it in `DeviceManager.discover`. It must pass
+  `tests/test_v04_verification.py` before it is used for any measurement.
 * **A new dataflow mode**: add a candidate generator in `basp/dataflow/` and register it in
   `adaptive.py`; if it needs a new kernel shape, express it as phases.

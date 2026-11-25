@@ -1,4 +1,5 @@
-"""The v0.3 report: architecture discovery, investigations and the evidence-gated decision.
+"""The v0.4 report: architecture discovery, investigations, the physical runtime's verification,
+expert-cache policies, and the evidence-gated decision (decided from receipts).
 
 Deterministic: the same code, profiles, estimates, inputs and seeds give byte-identical
 ``report.md`` and ``results.json`` (the software environment and git state go to
@@ -10,21 +11,47 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
 from basp.backends.cpu import NumericPayload
+from basp.calibration import coverage
+from basp.calibration.plan import plan_runs
 from basp.core.capabilities import DeviceKind
 from basp.core.tensor import CompressionFormat
 from basp.dataflow.base import ALL_MODES, CachePolicy, DataflowMode, ExecutionPolicy
 from basp.dse.hardware import CORNERS, HardwareDesign
-from basp.evidence import provenance, stale_reasons
+from basp.evidence import (
+    CONFIG_DIR,
+    EvidenceLevel,
+    Receipt,
+    ReceiptRegistry,
+    config_path,
+    profile_identity,
+    provenance,
+    sha256_file,
+    sha256_json,
+    source_fingerprint,
+    stale_reasons,
+)
 from basp.experiments import investigations as inv
 from basp.experiments.architectures import ARCHITECTURES
-from basp.experiments.calibrate import MACHINE_PROFILES, calibration_status, predict
-from basp.experiments.gate import Candidate, GateDecision, evaluate_gate
+from basp.experiments.calibrate import (
+    MACHINE_PROFILES,
+    calibration_status,
+    predict,
+    profile_qualification,
+)
+from basp.experiments.gate import (
+    Candidate,
+    GateDecision,
+    evaluate_gate,
+    scheduler_receipt,
+    simulation_receipts,
+)
 from basp.experiments.harness import build
 from basp.experiments.profiles import load_json, load_topology
 from basp.experiments.report import table, vary_topology
@@ -47,11 +74,13 @@ from basp.experiments.variants import (
     set_context,
     traces,
 )
+from basp.memory import ExpertCost, compare, trace_steps
+from basp.runtime import DeviceManager
 from basp.scheduler import placement
 from basp.verification import check_accounting, check_dependencies, compare_to_reference
 from basp.workloads.model import tiny_spec
 from basp.workloads.tiny import TinyModel
-from basp.workloads.trace import RoutingTrace
+from basp.workloads.trace import RoutingTrace, synth_trace
 from basp.workloads.zoo import MODELS, SUITE
 
 GiB = 1024**3
@@ -164,6 +193,54 @@ def regime_ratios(key: str, *, candidates=("D", "E", "F", "H"), corner: str = "p
         "scaling": candidate_scaling(best, spec, prior, held, design_of(best), corner=corner, tokens=4,
                                      warmup_tokens=1),
     }
+
+
+def expert_cache_policies(spec, profile_name: str, *, steps: int = 128,
+                          capacities_gib: tuple[int, ...] = (2, 4, 8)) -> dict[str, Any]:  # fmt: skip
+    """Expert-cache policies on a GPU with too little memory for every expert (E1: costs from the
+    profile, routing synthetic).  Misses execute on the CPU or migrate over the GPU link."""
+    topo = load_topology(profile_name)
+    host = topo.devices[topo.host]
+    gpu = topo.of_kind(DeviceKind.GPU)[0]
+    link = next(k for k in topo.links if {k.a, k.b} == {host.device_id, gpu.device_id})
+    expert_bytes = int(spec.expert_params * 4.5 / 8)
+    cost = ExpertCost.from_rates(expert_bytes, gpu_bandwidth=gpu.mem_bandwidth, cpu_bandwidth=host.mem_bandwidth,
+                                 link_bandwidth=link.bandwidth_ab, link_latency_s=link.latency_s)  # fmt: skip
+    trace = synth_trace(steps, spec.n_layers, spec.n_experts, spec.top_k, zipf_s=0.8, stickiness=0.6, seed=7)
+    sequence = trace_steps(trace)
+    rows = []
+    for gib in capacities_gib:
+        for r in compare(sequence, gib * GiB, lambda _key: cost):
+            rows.append({"capacity_gib": gib, **r.to_json(), "ms_per_token": 1e3 * r.time_s / steps,
+                         "mb_migrated_per_token": r.bytes_migrated / steps / 1e6,
+                         "cpu_share": r.cpu_executions / r.activations if r.activations else 0.0})  # fmt: skip
+    return {"profile": profile_name, "expert_mib": expert_bytes / 2**20, "steps": steps,
+            "all_experts_gib": spec.n_layers * spec.n_experts * expert_bytes / GiB,
+            "cost": {"t_gpu_us": cost.t_gpu * 1e6, "t_cpu_us": cost.t_cpu * 1e6,
+                     "t_migration_us": cost.t_migration * 1e6}, "rows": rows}  # fmt: skip
+
+
+def runtime_verification(evidence: str | Path | None) -> list[dict[str, Any]]:
+    """Recorded runtime-parity results (``benchmarks.verify_runtime``), each checked against
+    the current runtime code: a result produced by different runtime code is stale."""
+    from basp.verification.parity_report import runtime_fingerprint
+
+    out = []
+    if evidence is None or not Path(evidence).is_dir():
+        return out
+    now = runtime_fingerprint()
+    for file in sorted(Path(evidence).glob("verification/*/parity.json")):
+        r = json.loads(file.read_text())
+        out.append({"model": r["model"], "file": r["file"]["name"], "verdict": r["verdict"],
+                    "reasons": r["reasons"], "numerical_error": r["numerical_error"],
+                    "hidden_rel_l2_max": r["hidden"]["rel_l2_max"], "layers": r["hidden"]["layers_compared"],
+                    "routing": r["routing"], "generation_identical": r["generation"]["identical"],
+                    "generated_tokens": r["generation"]["tokens"], "perplexity": r.get("perplexity"),
+                    "quantisation": r.get("quantisation"), "prompt": r.get("prompt_text"),
+                    "generated_text": (r.get("generated_text") or {}).get("runtime"),
+                    "decode_tokens_per_s": r["telemetry"]["decode"]["tokens_per_s"],
+                    "stale": r["runtime_fingerprint"] != now})  # fmt: skip
+    return out
 
 
 def calibration_plan(profile_key: str = "i9-11900kf-3080ti") -> list[dict[str, Any]]:
@@ -294,10 +371,42 @@ def render_gate(decision: GateDecision) -> str:
     return table(["criterion", "threshold", "result", "status", "evidence", "required"], rows)
 
 
-def validated_profiles(calibration) -> set[str]:
-    """Machine profiles that have validation measurements in ``calibration``."""
-    return {MACHINE_PROFILES[row["machine"]] for row in calibration.per_measurement
-            if row["split"] == "validation" and row["machine"] in MACHINE_PROFILES}  # fmt: skip
+def validated_profiles(calibration, evidence: str | Path | None = "evidence") -> set[str]:
+    """Machine profiles that passed validation *and* are still the profile that was validated
+    (``profile_qualification``): a profile edited after validation does not count."""
+    return {name for name, q in profile_qualification(calibration, evidence).items() if q["qualified"]}
+
+
+def stored_receipts(evidence: str | Path | None) -> ReceiptRegistry:
+    """Receipts recorded by measurement tools (``evidence/**/receipts.json``)."""
+    registry = ReceiptRegistry()
+    if evidence is not None and Path(evidence).is_dir():
+        for file in sorted(Path(evidence).rglob("receipts.json")):
+            for receipt in ReceiptRegistry.load(file):
+                registry.add(receipt)
+    return registry
+
+
+def current_identities(profile_name: str, calibration, evidence: str | Path | None) -> dict[str, str | None]:
+    """The identities simulated receipts bind to now.  ``validation`` is set only if the
+    comparison's profile is the one a passing validation was recorded for."""
+    configs = {name: sha256_file(config_path(name)) for name in (profile_name, "design_estimates")}
+    qualified = profile_qualification(calibration, evidence).get(profile_name, {})
+    validation = None
+    if qualified.get("qualified"):
+        validation = sha256_json(calibration.by_machine[qualified["machine"]].to_json())
+    return {"source": source_fingerprint(), "config": sha256_json(configs),
+            "profile": profile_identity(load_json(profile_name)), "validation": validation}  # fmt: skip
+
+
+def numerical_receipts(correct: dict[str, Any], regimes: list[str], candidates: list[str]) -> list[Receipt]:
+    """Direct measurement of the dataflow runtime's numerical error -- on the small random-weight
+    model, so it is bound to that model and cannot qualify a regime about another."""
+    bindings = {"machine": "numpy (deterministic)", "model": "tiny-random", "runtime": source_fingerprint(),
+                "benchmark": sha256_json(asdict(tiny_spec()))}  # fmt: skip
+    return [Receipt("numerical_error", float(correct["max_rel_l2"]), EvidenceLevel.E3, arch, regime, None, bindings,
+                    repetitions=len(correct["runs"]), note="numeric co-simulation against the reference model")
+            for arch in candidates for regime in regimes]  # fmt: skip
 
 
 def dse_provenance_now(dse: dict[str, Any]) -> dict[str, Any]:
@@ -309,7 +418,7 @@ def dse_provenance_now(dse: dict[str, Any]) -> dict[str, Any]:
                       parameters=recorded.get("parameters_value", {}))  # fmt: skip
 
 
-def build_report(*, quick: bool = False, dse_path: str | Path | None = "reports/v0.3/dse.json",
+def build_report(*, quick: bool = False, dse_path: str | Path | None = "reports/v0.4/dse.json",
                  measurements_path: str | Path | None = "evidence", base: str | None = None,
                  trace_path: str | Path | None = None, compression_path: str | Path | None = None,
                  progress=None) -> tuple[str, dict[str, Any]]:  # fmt: skip
@@ -371,6 +480,9 @@ def _build_report(quick: bool, dse_path, measurements_path, progress) -> tuple[s
     workloads = workload_suite(spec, quick=quick)
     done("workload types")
     correct = correctness()
+    caching = expert_cache_policies(spec, "desktop_gpu12", steps=32 if quick else 128)
+    verified = runtime_verification(measurements_path)
+    backends = DeviceManager.discover().report()
     routing = routing_source(spec)
     measured_formats = dict(ctx.formats)
     calibration = calibration_status(
@@ -379,8 +491,14 @@ def _build_report(quick: bool, dse_path, measurements_path, progress) -> tuple[s
         min_validation=thresholds["min_validation_measurements"],
     )  # fmt: skip
     plan = calibration_plan()
-    on_validated = profile_name in validated_profiles(calibration)
-    calibrated = calibration.status == "pass" and on_validated
+    plan_data = json.loads((CONFIG_DIR / "calibration_plan.json").read_text())
+    covered = {machine: coverage(plan_runs(plan_data, machine)) for machine in sorted(plan_data["machines"])}
+    qualification = profile_qualification(calibration, measurements_path)
+    on_validated = profile_name in validated_profiles(calibration, measurements_path)
+    calibrated = on_validated
+    current = current_identities(profile_name, calibration, measurements_path)
+    sim_level = EvidenceLevel.E2 if calibrated else EvidenceLevel.E1
+    sim_bindings = {k: v for k, v in current.items() if v is not None}
     done("correctness and calibration")
 
     # -- gate: the project's first workload, and the most favourable regime found ---------
@@ -390,22 +508,23 @@ def _build_report(quick: bool, dse_path, measurements_path, progress) -> tuple[s
     greedy = sched[0]
     plans_per_batch = greedy["plans_per_batch"]
     batch_time = 1.0 / greedy["tokens_per_s"] / (spec.n_layers + 1)
+    receipts = stored_receipts(measurements_path)
     common = {"calibration": calibration, "comparison_on_calibrated_profile": on_validated,
-              "plans_per_batch": plans_per_batch, "batch_time_s": batch_time,
-              "numeric_rel_error": correct["max_rel_l2"]}  # fmt: skip
+              "receipts": receipts, "current": current}  # fmt: skip
     regime_primary = f"{spec.name}, single-user decoding, 12 GiB GPU"
     primary_scaling = candidate_scaling(
         primary["key"], spec, lab.prior, lab.held,
         lambda n, replicas: default_design(primary["key"], HardwareDesign(modules=n)),
         corner=corner, tokens=lab.tokens, warmup_tokens=lab.warmup, context_len=lab.context_len,
     )  # fmt: skip
-    gate_primary = evaluate_gate(Candidate(
-        primary["key"], primary["name"], regime_primary,
-        throughput_ratio=primary[corner]["vs_a"]["throughput"], energy_ratio=primary[corner]["vs_a"]["energy"],
-        cost_efficiency_ratio=primary[corner]["vs_a"]["cost_efficiency"],
-        scaling_efficiency=primary_scaling["efficiency"], scaling_arch=primary["key"],
-        scaling_regime=regime_primary, corner=corner,
-    ), thresholds, **common)  # fmt: skip
+    cand_primary = Candidate(primary["key"], primary["name"], regime_primary, model="qwen3-30b-a3b", corner=corner)
+    receipts.extend(simulation_receipts(cand_primary, level=sim_level, bindings=sim_bindings, values={
+        "throughput_ratio": primary[corner]["vs_a"]["throughput"], "energy_ratio": primary[corner]["vs_a"]["energy"],
+        "cost_efficiency_ratio": primary[corner]["vs_a"]["cost_efficiency"]}))  # fmt: skip
+    receipts.extend(simulation_receipts(Candidate(primary_scaling["arch"], "", regime_primary, corner=corner),
+                                        level=sim_level, bindings=sim_bindings,
+                                        values={"scaling_efficiency": primary_scaling["efficiency"]},
+                                        raw={"tokens_per_s": primary_scaling["tokens_per_s"]}, baseline=None))  # fmt: skip
     # a hypothetical model shape cannot justify hardware: only published shapes are eligible
     favourable = max((m for m in models if "speedup_vs_a" in m and m["source"].startswith("published")),
                      key=lambda m: m["speedup_vs_a"])  # fmt: skip
@@ -413,12 +532,23 @@ def _build_report(quick: bool, dse_path, measurements_path, progress) -> tuple[s
     regime_best = (f"{favourable['model']}, single-user decoding, {favourable['gpu_gib']} GiB GPU "
                    "(most favourable regime found among published model shapes)")  # fmt: skip
     best_key = ratios["candidate"]
-    gate_best = evaluate_gate(Candidate(
-        best_key, ARCHITECTURES[best_key].name, regime_best, throughput_ratio=ratios["throughput"],
-        energy_ratio=ratios["energy"], cost_efficiency_ratio=ratios["cost_efficiency"],
-        scaling_efficiency=ratios["scaling"]["efficiency"], scaling_arch=ratios["scaling"]["arch"],
-        scaling_regime=regime_best, corner=corner,
-    ), thresholds, **common)  # fmt: skip
+    cand_best = Candidate(best_key, ARCHITECTURES[best_key].name, regime_best, model=favourable["key"],
+                          corner=corner)  # fmt: skip
+    receipts.extend(simulation_receipts(cand_best, level=sim_level, bindings=sim_bindings, values={
+        "throughput_ratio": ratios["throughput"], "energy_ratio": ratios["energy"],
+        "cost_efficiency_ratio": ratios["cost_efficiency"]}))  # fmt: skip
+    # filed under the architecture it was measured for: another candidate's scaling never counts
+    receipts.extend(simulation_receipts(Candidate(ratios["scaling"]["arch"], "", regime_best, corner=corner),
+                                        level=sim_level, bindings=sim_bindings,
+                                        values={"scaling_efficiency": ratios["scaling"]["efficiency"]},
+                                        raw={"tokens_per_s": ratios["scaling"]["tokens_per_s"]}, baseline=None))  # fmt: skip
+    costs = thresholds["plan_evaluation_cost_s"]
+    for cand in (cand_primary, cand_best):
+        receipts.add(scheduler_receipt(cand, plans_per_batch=plans_per_batch, batch_time_s=batch_time, costs=costs,
+                                       limit=thresholds["scheduler_overhead_max"]))  # fmt: skip
+    receipts.extend(numerical_receipts(correct, [regime_primary, regime_best], [cand_primary.arch, cand_best.arch]))
+    gate_primary = evaluate_gate(cand_primary, thresholds, **common)
+    gate_best = evaluate_gate(cand_best, thresholds, **common)
     done("hardware gate")
 
     dse = None
@@ -437,10 +567,14 @@ def _build_report(quick: bool, dse_path, measurements_path, progress) -> tuple[s
         "compression": compression, "model_suite": models, "workloads": workloads,
         "correctness": correct, "calibration": calibration.to_json(), "calibration_plan": plan,
         "gate": [gate_primary.to_json(), gate_best.to_json()], "regime_ratios": ratios,
+        "receipts": [r.to_json() for r in receipts], "profile_qualification": qualification,
+        "calibration_coverage": covered,
+        "identities": current,
         "base_profile": profile_name, "calibrated": calibrated, "routing": routing,
         "measured_formats": {f.name: b for f, b in measured_formats.items()},
         "candidate_scaling": {"primary": primary_scaling, "favourable": ratios["scaling"]},
-        "dse_stale": dse_stale,
+        "dse_stale": dse_stale, "expert_cache": caching, "runtime_verification": verified,
+        "backends": [{k: b[k] for k in ("name", "kind", "available", "reason")} for b in backends],
         "dse": None if dse is None else {k: v for k, v in dse.items() if k != "front"},
     }  # fmt: skip
 
@@ -581,6 +715,9 @@ def _build_report(quick: bool, dse_path, measurements_path, progress) -> tuple[s
                               f"on (`{profile_name}`); rerun with `--base-profile` set to a validated profile "
                               f"for the evidence to count as calibrated.")  # fmt: skip
 
+    coverage_text = "; ".join(
+        f"`{m}` " + ("covers every regime" if c["complete"] else "lacks " + ", ".join(c["missing"]))
+        for m, c in covered.items())  # fmt: skip
     if routing.startswith("recorded"):
         routing_line = f"routing for {spec.name} is {routing}; other models use synthetic routing"
     else:
@@ -590,7 +727,7 @@ def _build_report(quick: bool, dse_path, measurements_path, progress) -> tuple[s
                             f"{measured_formats[CompressionFormat.ENTROPY]:.2f} bits per weight")  # fmt: skip
     else:
         compression_line = "compression ratios are assumed"
-    md = f"""# BASP Dataflow v0.3 -- evidence-gated architecture discovery: simulation report
+    md = f"""# BASP Dataflow v0.4 -- evidence-gated heterogeneous execution: simulation and runtime report
 
 > **Read this first.** {status_line} Everything about
 > compute-memory modules (performance, power, price) is an estimate with a
@@ -633,6 +770,13 @@ file is assumed); measurements will show how wrong these are:
 
 {table(["model", "layers on GPU", "predicted tokens/s"],
        [[p["model"], p["gpu_layers"], p["predicted_tokens_per_s"]] for p in plan])}
+
+Validation coverage of the pre-registered plan (regimes the held-out benchmarks exercise; the
+simulator is trusted only there): {coverage_text}.
+
+Each machine is judged on its own validation benchmarks; repeated runs of one benchmark count once,
+and measurements made with an executable or model file that has since changed are excluded. A profile
+counts as validated only while its content is the one the calibration run recorded.
 
 Calibration and validation measurements are separate sets, declared when they are recorded; a
 benchmark used to tune a profile cannot also validate it. Calibrating against an existing CPU and
@@ -866,8 +1010,101 @@ which a buyer with the same budget could choose, are not modelled, so the equal-
 still generous to the module-based designs.
 """
     runs = correct["runs"]
+    gate_max = thresholds["numeric_rel_l2_max"]
+    available = ", ".join(b["name"] for b in backends if b["available"])
+    missing = "; ".join(f"{b['kind']}: {b['reason']}" for b in backends if not b["available"])
+    if verified:
+        vrows = []
+        for v in verified:
+            ppl = v["perplexity"] or {}
+            routing_text = ("dense" if v["routing"] is None else
+                            "identical" if v["routing"]["exact"] else f"{v['routing']['mismatches']} differ")  # fmt: skip
+            vrows.append([f"{v['model']} (`{v['file']}`)", f"{v['numerical_error']:.1e}",
+                          f"{v['hidden_rel_l2_max']:.1e} over {v['layers']} layers", routing_text,
+                          f"{v['generated_tokens']} identical" if v["generation_identical"] else "diverge",
+                          f"{ppl['relative']:.6f}" if ppl else "-",
+                          v["verdict"].upper() + (" (stale: runtime code changed since)" if v["stale"] else "")])  # fmt: skip
+        first = verified[0]
+        quant = first["quantisation"]
+        quant_text = ""
+        if quant:
+            quant_text = (f" For information, the quantised file against the original checkpoint (not a property of "
+                          f"the runtime): perplexity {quant['quantised_runtime_perplexity']:.2f} vs "
+                          f"{quant['original_perplexity']:.2f} on the same {first['perplexity']['tokens']} tokens, greedy "
+                          f"choice identical for {quant['logits']['argmax_agreement']:.0%} of positions; a text this short "
+                          "does not measure quality.")  # fmt: skip
+        verified_text = (table(["model", "logits rel. L2 (max)", "layer outputs rel. L2 (max)", "expert routing",
+                                "greedy tokens", "perplexity ratio", "verdict"], vrows)
+                         + f"\n\nPrompt `{first['prompt']}` -> `{first['generated_text']}` (greedy, "
+                         f"{first['decode_tokens_per_s']:.0f} tokens/s on the verification machine's CPU in NumPy)."
+                         + quant_text)  # fmt: skip
+    else:
+        verified_text = ("No runtime verification has been recorded (`python -m benchmarks.verify_runtime`).")
+    runtime_section = f"""## 9. The physical runtime and its verification
+
+v0.4 adds a runtime that executes real models, separate from the simulator: it reads GGUF files
+(dequantising F32, F16, BF16, Q4_0, Q4_1, Q5_0, Q5_1, Q8_0, Q4_K, Q5_K and Q6_K, bit-identical to the
+reference `gguf` package), runs Qwen3 dense and mixture-of-experts models through an execution plan
+on the available backends, and keeps a KV cache per session. Backends available: {available}.
+Declared but not implemented, and refusing every call: {missing}. No GPU inference exists in this
+release, and nothing below says anything about module hardware.
+
+Verification runs the same GGUF weights in transformers (float32; weights dequantised by the reference
+package) and compares logits for every prompt position, every layer's output, every expert selection,
+16 greedy tokens through the KV cache, and perplexity on a fixed text (target: relative L2 <= {gate_max:g},
+perplexity ratio <= {thresholds["model_quality_relative_perplexity_max"]:g}):
+
+{verified_text}
+
+These are measurements (E3) of the NumPy runtime on the model named in each row. They do not
+qualify the gate's numerical-correctness or model-quality criteria for {spec.name}: the receipts are
+bound to the model they measured, and the gate requires the model its regime is about.
+CI repeats the comparison on small random-weight dense and MoE models, and checks that a deliberately
+broken runtime fails it."""
+    crow = [r for r in caching["rows"]]
+    by_cap: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    for r in crow:
+        by_cap[r["capacity_gib"]].append(r)
+    cache_rows = [[f"{r['capacity_gib']} GiB", r["policy"], f"{r['hit_rate']:.0%}", f"{r['cpu_share']:.0%}",
+                   f"{r['mb_migrated_per_token']:.0f}", f"{r['ms_per_token']:.1f}"]
+                  for r in crow if r["policy"] not in ("unbounded cache",)]  # fmt: skip
+    bounds = next(r for r in crow if r["policy"] == "unbounded cache")
+    best = {cap: min((r for r in rows if r["policy"] in ("LRU", "LFU", "cost-aware", "predictive")),
+                     key=lambda r: r["ms_per_token"]) for cap, rows in by_cap.items()}  # fmt: skip
+    lru = {cap: next(r for r in rows if r["policy"] == "LRU") for cap, rows in by_cap.items()}
+    gains = ", ".join(f"{cap} GiB: {best[cap]['policy']}"
+                      + (f" ({lru[cap]['ms_per_token'] / best[cap]['ms_per_token']:.2f}x faster than LRU)"
+                         if best[cap]["policy"] != "LRU" else "") for cap in sorted(best))  # fmt: skip
+    aware = {cap: next(r for r in rows if r["policy"] == "cost-aware") for cap, rows in by_cap.items()}
+    traffic = ", ".join(f"{lru[cap]['mb_migrated_per_token']:.0f} vs {aware[cap]['mb_migrated_per_token']:.0f} MB "
+                        f"at {cap} GiB" for cap in sorted(by_cap))  # fmt: skip
+    cache_section = f"""## 10. Memory domains and expert caching
+
+Memory is managed per physical domain (`basp.memory`): devices that share memory (the M2's CPU
+and GPU) share one pool, every allocation is charged to one of weights, KV cache, activations or
+workspace, and weights + KV + activations + workspace + reserved never exceed the physical capacity
+(checked after every operation in the tests). Requests are admitted only if their whole KV cache fits
+(unreferenced cached experts are evicted first, and under memory pressure a margin is kept free);
+blocks in use or being migrated are reference-counted and cannot be evicted.
+
+Expert caching on the GPU of `{caching["profile"]}`, for {spec.name} ({caching["all_experts_gib"]:.1f} GiB
+of experts at 4.5 bits per weight, {caching["expert_mib"]:.2f} MiB each): a miss either runs on the CPU
+({caching["cost"]["t_cpu_us"]:.0f} us) or migrates the expert over PCIe ({caching["cost"]["t_migration_us"]:.0f} us)
+and runs on the GPU ({caching["cost"]["t_gpu_us"]:.1f} us). Cost-aware caching values an expert at
+`V_e = (N_e (T_cpu - T_gpu) - T_migration) / M_e`; predictive caching estimates `N_e` from the measured
+next-step repeat rate. Expert time per token over {caching["steps"]} synthetic decoding steps (E1; no overlap of
+migration with computation for any policy):
+
+{table(["GPU expert cache", "policy", "hit rate", "run on CPU", "MB migrated per token", "expert ms per token"], cache_rows)}
+
+An unbounded cache (every expert migrated once) needs {bounds["ms_per_token"]:.1f} ms per token over this
+trace. Fastest policy at each capacity: {gains}. LRU migrates far more data per token than the
+cost-aware policy ({traffic}), which instead runs rarely used experts on the CPU; whether that wins
+depends on how much of the working set the cache holds. The cost-aware horizon (32 steps of expected
+reuse) is a parameter, not tuned on this trace. These are simulated costs on a synthetic trace, not
+runtime measurements."""
     md += f"""
-## 8. Numerical verification
+## 8. Numerical verification of the simulated dataflows
 
 A small attention-free MoE language model with real INT4 weights is decoded by the streaming
 kernels following the scheduled plans, and compared with an independent float64 reference.
@@ -882,9 +1119,25 @@ With the reduction order fixed, fused and unfused graphs give bit-identical logi
 modules, add the same FP32 terms in a different order: the three runs above differ from each other
 by at most {correct["max_abs_diff_between_dataflows"]:.1e} on logits of magnitude {correct["logit_scale"]:.1f}, and select the same experts.
 Such differences are at rounding level but are not zero, and a reordered sum could in principle
-tip a near-tied routing decision; none was observed. Real model weights have not been run.
+tip a near-tied routing decision; none was observed. This co-simulation does not run real weights;
+section 9 does.
 
-## 9. What changed since earlier reports
+{runtime_section}
+
+{cache_section}
+
+## 11. What changed since earlier reports
+
+New in v0.4: the gate decides each criterion from **metric-specific receipts** bound to the
+identities that produced them (simulator source, configuration, profile, validation, model weights,
+runtime, benchmark), so a throughput result cannot stand in for energy, a stale result is rejected,
+and a result about another model cannot qualify the regime. Calibration merges repeated runs of a
+benchmark into one data point, judges each machine on its own, excludes measurements made with an
+executable or model file that has since changed, and qualifies a profile only if it is still the
+profile that was validated. A physical runtime (section 9) executes real GGUF models; memory is
+managed in physical domains with shared accounting, admission control and safe eviction (section 10).
+Repaired: designs built on a unified-memory machine (Apple M2) split its one memory domain in two
+and were rejected; they now share one pool, and the integrated GPU is not priced separately.
 
 Corrected in v0.3 (each found in an audit of v0.2 or while fixing it, and covered by a regression test):
 
@@ -902,14 +1155,14 @@ Corrected in v0.3 (each found in an audit of v0.2 or while fixing it, and covere
 Corrected in v0.2: batched GPU launches; the output projection's location chosen per token; the v0.1
 claim of bit-identical logits under every policy (true only while the reduction order is unchanged).
 
-The reports in `reports/v0.1/` and `reports/v0.2/` were produced by earlier models and are kept as
-records; their numbers are superseded by this report.
+The reports in `reports/v0.1/`, `reports/v0.2/` and `reports/v0.3/` were produced by earlier models and
+are kept as records; their numbers are superseded by this report.
 """
     return md, results
 
 
-def write_report(outdir: str | Path = "reports/v0.3", *, quick: bool = False, progress=None,
-                 dse_path: str | Path | None = "reports/v0.3/dse.json",
+def write_report(outdir: str | Path = "reports/v0.4", *, quick: bool = False, progress=None,
+                 dse_path: str | Path | None = "reports/v0.4/dse.json",
                  measurements_path: str | Path | None = "evidence", base: str | None = None,
                  trace_path: str | Path | None = None,
                  compression_path: str | Path | None = None) -> tuple[Path, Path]:  # fmt: skip
