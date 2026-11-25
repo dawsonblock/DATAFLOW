@@ -52,7 +52,7 @@ Validation measurements available: **0** (at least
 Nothing has been measured yet.
 
 The procedure for the calibration machines is in `docs/calibration.md`; machine names map to
-profiles as `i9-11900kf-3080ti` -> `configs/i9_11900kf_rtx3080ti.json`, `macbook-m2` -> `configs/macbook_m2.json`. Until `python -m benchmarks.calibrate` has fitted them, these profiles are
+profiles as `i9-11900kf-3080ti` -> `configs/i9_11900kf_rtx3080ti.json`, `macbook-m2` -> `configs/macbook_m2.json`, `colab-t4` -> `configs/colab_t4.json`. Until `python -m benchmarks.calibrate` has fitted them, these profiles are
 priors built from public specifications and assumptions. For orientation, this is what the simulator
 currently predicts for conventional layer offloading on the primary machine (a 4.85 bits-per-weight
 file is assumed); measurements will show how wrong these are:
@@ -287,7 +287,7 @@ Qwen3-30B-A3B; each workload is a separate question with its own metric.
 | batched inference (4 sequences in lock step) | aggregate tokens/s | 303.0 | 201.3 | 440.2 | 460.1 | 1.52x (H) |
 | concurrent requests (4 independent streams) | aggregate tokens/s | 273.4 | 197.1 | 337.1 | 339.1 | 1.24x (H) |
 | long-context attention (32k context) | tokens/s | 75.4 | 73.3 | 86.0 | 89.7 | 1.19x (H) |
-| prefill (128-token prompt) | prompt tokens/s | 1,235.0 | 513.1 | 2,491.6 | 2,598.5 | 2.10x (H) |
+| prefill (128-token prompt) | prompt tokens/s | 1,251.1 | 516.5 | 2,559.8 | 2,657.0 | 2.12x (H) |
 | sustained decoding (48 tokens) | tokens/s | 174.0 | 131.5 | 204.3 | 216.5 | 1.24x (H) |
 
 ## 7. Design-space exploration

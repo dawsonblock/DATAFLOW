@@ -19,12 +19,12 @@
       "key": "A",
       "name": "Centralized",
       "nominal": {
-        "average_power_w": 105.9938832948573,
+        "average_power_w": 105.99388329619268,
         "cost_usd": 1692.0,
-        "link_mb_per_token": 25.278990169599872,
-        "tokens_per_joule": 1.6110119888879841,
-        "tokens_per_s": 170.75741673680892,
-        "tokens_per_s_per_kusd": 100.92045906430788,
+        "link_mb_per_token": 25.278990169599897,
+        "tokens_per_joule": 1.611011989002206,
+        "tokens_per_s": 170.75741675106707,
+        "tokens_per_s_per_kusd": 100.92045907273467,
         "vs_a": {
           "cost_efficiency": 1.0,
           "energy": 1.0,
@@ -32,12 +32,12 @@
         }
       },
       "optimistic": {
-        "average_power_w": 105.9938832948573,
+        "average_power_w": 105.99388329619268,
         "cost_usd": 2420.0,
-        "link_mb_per_token": 25.278990169599872,
-        "tokens_per_joule": 1.6110119888879841,
-        "tokens_per_s": 170.75741673680892,
-        "tokens_per_s_per_kusd": 70.56091600694583,
+        "link_mb_per_token": 25.278990169599897,
+        "tokens_per_joule": 1.611011989002206,
+        "tokens_per_s": 170.75741675106707,
+        "tokens_per_s_per_kusd": 70.56091601283764,
         "vs_a": {
           "cost_efficiency": 1.0,
           "energy": 1.0,
@@ -45,12 +45,12 @@
         }
       },
       "pessimistic": {
-        "average_power_w": 105.9938832948573,
+        "average_power_w": 105.99388329619268,
         "cost_usd": 1228.0,
-        "link_mb_per_token": 25.278990169599872,
-        "tokens_per_joule": 1.6110119888879841,
-        "tokens_per_s": 170.75741673680892,
-        "tokens_per_s_per_kusd": 139.05327095831345,
+        "link_mb_per_token": 25.278990169599897,
+        "tokens_per_joule": 1.611011989002206,
+        "tokens_per_s": 170.75741675106707,
+        "tokens_per_s_per_kusd": 139.0532709699243,
         "vs_a": {
           "cost_efficiency": 1.0,
           "energy": 1.0,
@@ -78,42 +78,42 @@
       "key": "B",
       "name": "Distributed",
       "nominal": {
-        "average_power_w": 112.00456535181718,
+        "average_power_w": 112.00456535301406,
         "cost_usd": 8072.0,
         "link_mb_per_token": 2.872448,
-        "tokens_per_joule": 0.4150805247386707,
-        "tokens_per_s": 46.49091375935901,
-        "tokens_per_s_per_kusd": 5.759528463746161,
+        "tokens_per_joule": 0.4150805248220038,
+        "tokens_per_s": 46.4909137691895,
+        "tokens_per_s_per_kusd": 5.759528464964011,
         "vs_a": {
-          "cost_efficiency": 0.05706997884419166,
-          "energy": 0.2576520395885966,
-          "throughput": 0.2722629250770184
+          "cost_efficiency": 0.05706997885149377,
+          "energy": 0.2576520396220561,
+          "throughput": 0.27226292511185446
         }
       },
       "optimistic": {
-        "average_power_w": 88.43307727240946,
+        "average_power_w": 88.43307727342166,
         "cost_usd": 5151.2,
         "link_mb_per_token": 2.8724479999999994,
-        "tokens_per_joule": 0.662882280254875,
-        "tokens_per_s": 58.62071991229034,
-        "tokens_per_s_per_kusd": 11.380012407262452,
+        "tokens_per_joule": 0.6628822803886838,
+        "tokens_per_s": 58.62071992479444,
+        "tokens_per_s_per_kusd": 11.380012409689868,
         "vs_a": {
-          "cost_efficiency": 0.16127926125763778,
-          "energy": 0.4114694892571442,
-          "throughput": 0.3432982357811337
+          "cost_efficiency": 0.16127926127857276,
+          "energy": 0.4114694893110296,
+          "throughput": 0.3432982358256958
         }
       },
       "pessimistic": {
-        "average_power_w": 182.48359761865288,
+        "average_power_w": 182.48359762055588,
         "cost_usd": 19648.0,
         "link_mb_per_token": 2.872448,
-        "tokens_per_joule": 0.20567780831174298,
-        "tokens_per_s": 37.53282641104653,
-        "tokens_per_s_per_kusd": 1.9102619305296484,
+        "tokens_per_joule": 0.20567780835172791,
+        "tokens_per_s": 37.53282641873453,
+        "tokens_per_s_per_kusd": 1.9102619309209348,
         "vs_a": {
-          "cost_efficiency": 0.013737626719347888,
-          "energy": 0.12766994270086965,
-          "throughput": 0.21980202750956618
+          "cost_efficiency": 0.013737626721014735,
+          "energy": 0.1276699427166375,
+          "throughput": 0.21980202753623576
         }
       },
       "replicas": 2
@@ -137,42 +137,42 @@
       "key": "C",
       "name": "Pipeline",
       "nominal": {
-        "average_power_w": 90.8729424213804,
+        "average_power_w": 90.87294242373797,
         "cost_usd": 8072.0,
         "link_mb_per_token": 0.63232,
-        "tokens_per_joule": 0.3085080166034829,
-        "tokens_per_s": 28.035031229342575,
-        "tokens_per_s_per_kusd": 3.4731208163209333,
+        "tokens_per_joule": 0.3085080166348173,
+        "tokens_per_s": 28.035031232917348,
+        "tokens_per_s_per_kusd": 3.473120816763794,
         "vs_a": {
-          "cost_efficiency": 0.03441443735514336,
-          "energy": 0.19149951628630238,
-          "throughput": 0.16418046000633407
+          "cost_efficiency": 0.034414437356657994,
+          "energy": 0.19149951629217504,
+          "throughput": 0.16418046001355988
         }
       },
       "optimistic": {
-        "average_power_w": 79.64988458539032,
+        "average_power_w": 79.64988458755124,
         "cost_usd": 5151.2,
         "link_mb_per_token": 0.63232,
-        "tokens_per_joule": 0.440223458312956,
-        "tokens_per_s": 35.06374764640834,
-        "tokens_per_s_per_kusd": 6.806908612829698,
+        "tokens_per_joule": 0.44022345835717624,
+        "tokens_per_s": 35.06374765088176,
+        "tokens_per_s_per_kusd": 6.806908613698121,
         "vs_a": {
-          "cost_efficiency": 0.09646854091519509,
-          "energy": 0.273258958561087,
-          "throughput": 0.205342457835683
+          "cost_efficiency": 0.09646854091944743,
+          "energy": 0.2732589585691615,
+          "throughput": 0.20534245784473454
         }
       },
       "pessimistic": {
-        "average_power_w": 127.41884750802835,
+        "average_power_w": 127.418847511626,
         "cost_usd": 19648.0,
         "link_mb_per_token": 0.63232,
-        "tokens_per_joule": 0.18287573427070894,
-        "tokens_per_s": 23.30181529795818,
-        "tokens_per_s_per_kusd": 1.185963726484028,
+        "tokens_per_joule": 0.18287573428880183,
+        "tokens_per_s": 23.301815300921472,
+        "tokens_per_s_per_kusd": 1.185963726634847,
         "vs_a": {
-          "cost_efficiency": 0.008528844509091527,
-          "energy": 0.11351606042171082,
-          "throughput": 0.13646151214546443
+          "cost_efficiency": 0.008528844509463987,
+          "energy": 0.1135160604248932,
+          "throughput": 0.13646151215142377
         }
       },
       "replicas": 1
@@ -196,42 +196,42 @@
       "key": "D",
       "name": "Expert-local",
       "nominal": {
-        "average_power_w": 151.15425535359262,
+        "average_power_w": 151.15425535400317,
         "cost_usd": 8772.0,
         "link_mb_per_token": 4.54656,
-        "tokens_per_joule": 0.7053196318163382,
-        "tokens_per_s": 106.6120637334687,
-        "tokens_per_s_per_kusd": 12.153678036191144,
+        "tokens_per_joule": 0.7053196318511953,
+        "tokens_per_s": 106.61206373902708,
+        "tokens_per_s_per_kusd": 12.153678036824793,
         "vs_a": {
-          "cost_efficiency": 0.1204282872756916,
-          "energy": 0.437811535035932,
-          "throughput": 0.6243480709115642
+          "cost_efficiency": 0.12042828727191462,
+          "energy": 0.43781153502652764,
+          "throughput": 0.6243480708919829
         }
       },
       "optimistic": {
-        "average_power_w": 127.32049874583508,
+        "average_power_w": 127.32049874616449,
         "cost_usd": 6151.2,
         "link_mb_per_token": 4.54656,
-        "tokens_per_joule": 0.9887622815559393,
-        "tokens_per_s": 125.88970682877199,
-        "tokens_per_s_per_kusd": 20.465877687080894,
+        "tokens_per_joule": 0.9887622816142473,
+        "tokens_per_s": 125.88970683652151,
+        "tokens_per_s_per_kusd": 20.465877688340733,
         "vs_a": {
-          "cost_efficiency": 0.29004552158968977,
-          "energy": 0.6137522801667302,
-          "throughput": 0.7372429803316114
+          "cost_efficiency": 0.29004552158332575,
+          "energy": 0.6137522801594081,
+          "throughput": 0.7372429803154352
         }
       },
       "pessimistic": {
-        "average_power_w": 223.88683493357445,
+        "average_power_w": 223.88683493441815,
         "cost_usd": 20148.0,
         "link_mb_per_token": 4.546560000000001,
-        "tokens_per_joule": 0.40265039594562146,
-        "tokens_per_s": 90.14812273301574,
-        "tokens_per_s_per_kusd": 4.474296343707353,
+        "tokens_per_joule": 0.4026503959618563,
+        "tokens_per_s": 90.14812273699022,
+        "tokens_per_s_per_kusd": 4.474296343904617,
         "vs_a": {
-          "cost_efficiency": 0.0321768507340521,
-          "energy": 0.24993631253083015,
-          "throughput": 0.5279309353336169
+          "cost_efficiency": 0.032176850732783965,
+          "energy": 0.2499363125231869,
+          "throughput": 0.5279309353128105
         }
       },
       "replicas": 2
@@ -255,42 +255,42 @@
       "key": "E",
       "name": "Tensor-parallel",
       "nominal": {
-        "average_power_w": 156.48179813093978,
+        "average_power_w": 156.48179813178905,
         "cost_usd": 8772.0,
         "link_mb_per_token": 3.145728,
-        "tokens_per_joule": 0.8408100428896899,
-        "tokens_per_s": 131.57146739793126,
-        "tokens_per_s_per_kusd": 14.999027291145834,
+        "tokens_per_joule": 0.840810042939221,
+        "tokens_per_s": 131.57146740639607,
+        "tokens_per_s_per_kusd": 14.999027292110814,
         "vs_a": {
-          "cost_efficiency": 0.1486222657943743,
-          "energy": 0.5219142059085896,
-          "throughput": 0.770516853160905
+          "cost_efficiency": 0.14862226579152618,
+          "energy": 0.5219142059023308,
+          "throughput": 0.7705168531461394
         }
       },
       "optimistic": {
-        "average_power_w": 131.7533897509098,
+        "average_power_w": 131.75338975164408,
         "cost_usd": 6151.2,
         "link_mb_per_token": 3.145728,
-        "tokens_per_joule": 1.164868978613649,
-        "tokens_per_s": 153.4754365480283,
-        "tokens_per_s_per_kusd": 24.95048714852847,
+        "tokens_per_joule": 1.1648689786945754,
+        "tokens_per_s": 153.47543655954598,
+        "tokens_per_s_per_kusd": 24.950487150400896,
         "vs_a": {
-          "cost_efficiency": 0.3536020868276768,
-          "energy": 0.7230666107070441,
-          "throughput": 0.8987922134274402
+          "cost_efficiency": 0.35360208682468747,
+          "energy": 0.7230666107060115,
+          "throughput": 0.8987922134198421
         }
       },
       "pessimistic": {
-        "average_power_w": 231.79154634893996,
+        "average_power_w": 231.79154635040925,
         "cost_usd": 20148.0,
         "link_mb_per_token": 3.145728,
-        "tokens_per_joule": 0.4793811597453301,
-        "tokens_per_s": 111.11650030791827,
-        "tokens_per_s_per_kusd": 5.5150139124438295,
+        "tokens_per_joule": 0.47938115976834034,
+        "tokens_per_s": 111.1165003139562,
+        "tokens_per_s_per_kusd": 5.515013912743507,
         "vs_a": {
-          "cost_efficiency": 0.03966115916897177,
-          "energy": 0.2975652341831592,
-          "throughput": 0.6507272271469408
+          "cost_efficiency": 0.039661159167815214,
+          "energy": 0.29756523417634473,
+          "throughput": 0.650727227127965
         }
       },
       "replicas": 1
@@ -314,42 +314,42 @@
       "key": "F",
       "name": "Adaptive hybrid",
       "nominal": {
-        "average_power_w": 154.6453729510103,
+        "average_power_w": 154.64537295212017,
         "cost_usd": 8772.0,
-        "link_mb_per_token": 15.55186760106637,
-        "tokens_per_joule": 1.2913058172356606,
-        "tokens_per_s": 199.6944697002179,
-        "tokens_per_s_per_kusd": 22.764987425925433,
+        "link_mb_per_token": 15.551867601066398,
+        "tokens_per_joule": 1.2913058173524938,
+        "tokens_per_s": 199.6944697197188,
+        "tokens_per_s_per_kusd": 22.764987428148515,
         "vs_a": {
-          "cost_efficiency": 0.22557356196149758,
-          "energy": 0.8015494770631697,
-          "throughput": 1.1694629347081895
+          "cost_efficiency": 0.2255735619646904,
+          "energy": 0.8015494770788608,
+          "throughput": 1.1694629347247425
         }
       },
       "optimistic": {
-        "average_power_w": 133.47629000493882,
+        "average_power_w": 133.47629000614546,
         "cost_usd": 6151.2,
-        "link_mb_per_token": 15.07479914910458,
-        "tokens_per_joule": 1.6063465380332107,
-        "tokens_per_s": 214.40917635895028,
-        "tokens_per_s_per_kusd": 34.85647944449055,
+        "link_mb_per_token": 15.074799149104583,
+        "tokens_per_joule": 1.6063465381871145,
+        "tokens_per_s": 214.4091763814311,
+        "tokens_per_s_per_kusd": 34.85647944814526,
         "vs_a": {
-          "cost_efficiency": 0.4939913115790528,
-          "energy": 0.9971040247453442,
-          "throughput": 1.2556360974318468
+          "cost_efficiency": 0.4939913115895998,
+          "energy": 0.9971040247701811,
+          "throughput": 1.2556360974586556
         }
       },
       "pessimistic": {
-        "average_power_w": 218.574467626081,
+        "average_power_w": 218.574467627312,
         "cost_usd": 20148.0,
-        "link_mb_per_token": 19.327208627199745,
-        "tokens_per_joule": 0.8333068238793933,
-        "tokens_per_s": 182.1395953986188,
-        "tokens_per_s_per_kusd": 9.040083154586997,
+        "link_mb_per_token": 19.327208627199727,
+        "tokens_per_joule": 0.8333068239489205,
+        "tokens_per_s": 182.13959541484152,
+        "tokens_per_s_per_kusd": 9.040083155392173,
         "vs_a": {
-          "cost_efficiency": 0.06501165411130176,
-          "energy": 0.5172567489423782,
-          "throughput": 1.0666570089857557
+          "cost_efficiency": 0.06501165411166375,
+          "energy": 0.5172567489488618,
+          "throughput": 1.0666570089916947
         }
       },
       "replicas": 2
@@ -373,42 +373,42 @@
       "key": "G",
       "name": "Spatial dataflow",
       "nominal": {
-        "average_power_w": 151.83768765383516,
+        "average_power_w": 151.83768765429514,
         "cost_usd": 8772.0,
         "link_mb_per_token": 3.024896,
-        "tokens_per_joule": 0.7238935745044636,
-        "tokens_per_s": 109.91432646022699,
-        "tokens_per_s_per_kusd": 12.530132975402074,
+        "tokens_per_joule": 0.72389357454118,
+        "tokens_per_s": 109.91432646613491,
+        "tokens_per_s_per_kusd": 12.53013297607557,
         "vs_a": {
-          "cost_efficiency": 0.12415850157219067,
-          "energy": 0.4493408984523683,
-          "throughput": 0.6436869833281659
+          "cost_efficiency": 0.12415850156849706,
+          "energy": 0.4493408984433006,
+          "throughput": 0.6436869833090166
         }
       },
       "optimistic": {
-        "average_power_w": 127.98148250336803,
+        "average_power_w": 127.98148250375063,
         "cost_usd": 6151.2,
         "link_mb_per_token": 3.024896,
-        "tokens_per_joule": 1.0167979006708188,
-        "tokens_per_s": 130.13130273416374,
-        "tokens_per_s_per_kusd": 21.15543353071982,
+        "tokens_per_joule": 1.0167979007324797,
+        "tokens_per_s": 130.1313027424442,
+        "tokens_per_s_per_kusd": 21.155433532065974,
         "vs_a": {
-          "cost_efficiency": 0.2998180115552544,
-          "energy": 0.6311547696008599,
-          "throughput": 0.7620828730077193
+          "cost_efficiency": 0.2998180115492976,
+          "energy": 0.6311547695943852,
+          "throughput": 0.7620828729925783
         }
       },
       "pessimistic": {
-        "average_power_w": 225.03110124530934,
+        "average_power_w": 225.0311012462343,
         "cost_usd": 20148.0,
         "link_mb_per_token": 3.024896,
-        "tokens_per_joule": 0.41440664453604603,
-        "tokens_per_s": 93.25438358331989,
-        "tokens_per_s_per_kusd": 4.6284685121758935,
+        "tokens_per_joule": 0.41440664455324266,
+        "tokens_per_s": 93.25438358757297,
+        "tokens_per_s_per_kusd": 4.628468512386985,
         "vs_a": {
-          "cost_efficiency": 0.03328557811174003,
-          "energy": 0.25723374338268834,
-          "throughput": 0.5461220096053241
+          "cost_efficiency": 0.03328557811047877,
+          "energy": 0.25723374337512467,
+          "throughput": 0.5461220095846304
         }
       },
       "replicas": 2
@@ -432,42 +432,42 @@
       "key": "H",
       "name": "Hierarchical",
       "nominal": {
-        "average_power_w": 156.08787749458716,
+        "average_power_w": 156.08787749590155,
         "cost_usd": 8072.0,
-        "link_mb_per_token": 14.095475481599852,
-        "tokens_per_joule": 1.3445616750127942,
-        "tokens_per_s": 209.86977801331392,
-        "tokens_per_s_per_kusd": 25.99972472910232,
+        "link_mb_per_token": 14.095475481599836,
+        "tokens_per_joule": 1.344561675139464,
+        "tokens_per_s": 209.86977803485286,
+        "tokens_per_s_per_kusd": 25.99972473177067,
         "vs_a": {
-          "cost_efficiency": 0.25762590628462106,
-          "energy": 0.8346068708904459,
-          "throughput": 1.229052195939398
+          "cost_efficiency": 0.2576259062895496,
+          "energy": 0.834606870909899,
+          "throughput": 1.2290521959629104
         }
       },
       "optimistic": {
-        "average_power_w": 136.59249642587093,
+        "average_power_w": 136.5924964275526,
         "cost_usd": 5501.2,
-        "link_mb_per_token": 9.097931483428304,
-        "tokens_per_joule": 1.7214473618600348,
-        "tokens_per_s": 235.13679262219176,
-        "tokens_per_s_per_kusd": 42.74281840729146,
+        "link_mb_per_token": 9.09793148342831,
+        "tokens_per_joule": 1.721447362036787,
+        "tokens_per_s": 235.13679264922962,
+        "tokens_per_s_per_kusd": 42.74281841220636,
         "vs_a": {
-          "cost_efficiency": 0.6057577030757929,
-          "energy": 1.0685503110676908,
-          "throughput": 1.3770224281655172
+          "cost_efficiency": 0.6057577030948672,
+          "energy": 1.0685503111016448,
+          "throughput": 1.3770224282088774
         }
       },
       "pessimistic": {
-        "average_power_w": 220.81483830185365,
+        "average_power_w": 220.81483830339977,
         "cost_usd": 19848.0,
-        "link_mb_per_token": 13.57091289965671,
-        "tokens_per_joule": 0.8914392346193828,
-        "tokens_per_s": 196.8430104484072,
-        "tokens_per_s_per_kusd": 9.917523702559816,
+        "link_mb_per_token": 13.570912899656754,
+        "tokens_per_joule": 0.891439234698949,
+        "tokens_per_s": 196.84301046735487,
+        "tokens_per_s_per_kusd": 9.917523703514453,
         "vs_a": {
-          "cost_efficiency": 0.07132175772789245,
-          "energy": 0.5533411549809178,
-          "throughput": 1.1527640451003331
+          "cost_efficiency": 0.07132175772880239,
+          "energy": 0.5533411549910746,
+          "throughput": 1.1527640451150407
         }
       },
       "replicas": 2
@@ -506,42 +506,42 @@
     {
       "gpu_layers": 36,
       "model": "Qwen3-4B",
-      "predicted_tokens_per_s": 194.05535504598112
+      "predicted_tokens_per_s": 194.05535289319337
     },
     {
       "gpu_layers": 36,
       "model": "Qwen3-8B",
-      "predicted_tokens_per_s": 105.79074632702773
+      "predicted_tokens_per_s": 105.79074648231808
     },
     {
       "gpu_layers": 0,
       "model": "Qwen3-8B",
-      "predicted_tokens_per_s": 7.775228896827017
+      "predicted_tokens_per_s": 7.775228908477404
     },
     {
       "gpu_layers": 40,
       "model": "Qwen3-14B",
-      "predicted_tokens_per_s": 57.90591742535315
+      "predicted_tokens_per_s": 57.905917207361504
     },
     {
       "gpu_layers": 20,
       "model": "Qwen3-14B",
-      "predicted_tokens_per_s": 7.508462306676564
+      "predicted_tokens_per_s": 7.508462279391262
     },
     {
       "gpu_layers": 0,
       "model": "Qwen3-30B-A3B",
-      "predicted_tokens_per_s": 19.201013688178584
+      "predicted_tokens_per_s": 19.201013789192917
     },
     {
       "gpu_layers": 16,
       "model": "Qwen3-30B-A3B",
-      "predicted_tokens_per_s": 26.50900305864939
+      "predicted_tokens_per_s": 26.509003191630566
     },
     {
       "gpu_layers": 32,
       "model": "Qwen3-30B-A3B",
-      "predicted_tokens_per_s": 42.845175820909795
+      "predicted_tokens_per_s": 42.8451760127082
     }
   ],
   "candidate_scaling": {
@@ -555,46 +555,46 @@
     },
     "primary": {
       "arch": "H",
-      "efficiency": 0.3221502387555241,
+      "efficiency": 0.3221502387624704,
       "tokens_per_s": {
-        "1": 152.75715083187393,
-        "4": 196.8430104484072
+        "1": 152.75715084328422,
+        "4": 196.84301046735487
       }
     }
   },
   "communication": [
     {
-      "average_power_w": 147.81218133215347,
+      "average_power_w": 147.81218133235532,
       "investigation": "communication",
       "link_mb_per_token": 4.569088,
-      "tokens_per_joule": 0.6158756968612745,
-      "tokens_per_s": 91.03393018252508,
+      "tokens_per_joule": 0.615875696887853,
+      "tokens_per_s": 91.03393018657805,
       "variant": "activations sent after routing (latencies x1)"
     },
     {
-      "average_power_w": 147.9808072726352,
+      "average_power_w": 147.98080727284633,
       "investigation": "communication",
       "link_mb_per_token": 4.718592,
-      "speedup": 1.0085278258310748,
-      "tokens_per_joule": 0.6204199948354895,
-      "tokens_per_s": 91.81025168383988,
+      "speedup": 1.0085278258314578,
+      "tokens_per_joule": 0.6204199948624618,
+      "tokens_per_s": 91.81025168796228,
       "variant": "activations streamed eagerly (latencies x1)"
     },
     {
-      "average_power_w": 140.27625164313622,
+      "average_power_w": 140.2762516430541,
       "investigation": "communication",
       "link_mb_per_token": 4.569088,
-      "tokens_per_joule": 0.39857858416013914,
-      "tokens_per_s": 55.91110977121262,
+      "tokens_per_joule": 0.3985785841712695,
+      "tokens_per_s": 55.91110977274123,
       "variant": "activations sent after routing (latencies x8)"
     },
     {
-      "average_power_w": 140.81350833488824,
+      "average_power_w": 140.8135083348178,
       "investigation": "communication",
       "link_mb_per_token": 4.718592,
-      "speedup": 1.0446761914227887,
-      "tokens_per_joule": 0.4147968891954688,
-      "tokens_per_s": 58.40900521401186,
+      "speedup": 1.0446761914240656,
+      "tokens_per_joule": 0.41479688920752383,
+      "tokens_per_s": 58.40900521568016,
       "variant": "activations streamed eagerly (latencies x8)"
     }
   ],
@@ -652,7 +652,7 @@
     "by_component_ms": {
       "host": 0.09800000000005898,
       "input": 0.0,
-      "kernel": 4.321924639085843,
+      "kernel": 4.321924638596779,
       "output": 0.3503359999999407,
       "queue": 6.214654523809764
     },
@@ -660,25 +660,25 @@
       "expert": 8.943276238095542,
       "head": 0.3502605439999976,
       "reduce": 0.14404423680005296,
-      "trunk": 1.4493341439999534
+      "trunk": 1.4493341435108897
     },
     "expert_ops_per_token": 384.0,
     "expert_phase_ms": 8.943276238095542,
     "expert_work_ms": 19.169422619048248,
     "ideal_efficiency": {
-      "2": 0.9121977712845522,
-      "4": 0.7759393608272136,
-      "8": 0.5974520447870993
+      "2": 0.9121977713018915,
+      "4": 0.7759393608648517,
+      "8": 0.5974520448391654
     },
     "ideal_tokens_per_s": {
-      "2": 86.01151520859268,
-      "4": 146.32730365204256,
-      "8": 225.33602801614575
+      "2": 86.01151521221077,
+      "4": 146.32730366251423,
+      "8": 225.33602804097862
     },
     "residual_ms": 0.0,
-    "serial_ms": 2.041638924800063,
-    "token_time_ms": 10.984915162895607,
-    "tokens_per_s": 91.03393018252508
+    "serial_ms": 2.0416389243109996,
+    "token_time_ms": 10.984915162406542,
+    "tokens_per_s": 91.03393018657805
   },
   "dse": {
     "base_profile": "desktop_gpu12",
@@ -697,13 +697,13 @@
           },
           "feasible": true,
           "metrics": {
-            "average_power_w": 125.42272206473352,
+            "average_power_w": 125.42272206703034,
             "cost_usd": 3592.0,
             "link_mb_per_token": 0.0,
-            "token_latency_ms": 2.2830636682448286,
-            "tokens_per_joule": 3.4922534494736936,
-            "tokens_per_s": 438.007933772946,
-            "tokens_per_s_per_kusd": 121.93984793233463
+            "token_latency_ms": 2.2830636679953518,
+            "tokens_per_joule": 3.4922534497913498,
+            "tokens_per_s": 438.0079338208083,
+            "tokens_per_s_per_kusd": 121.93984794565932
           }
         },
         "best_conventional": {
@@ -719,13 +719,13 @@
           },
           "feasible": true,
           "metrics": {
-            "average_power_w": 125.42272206473352,
+            "average_power_w": 125.42272206703034,
             "cost_usd": 3592.0,
             "link_mb_per_token": 0.0,
-            "token_latency_ms": 2.2830636682448286,
-            "tokens_per_joule": 3.4922534494736936,
-            "tokens_per_s": 438.007933772946,
-            "tokens_per_s_per_kusd": 121.93984793233463
+            "token_latency_ms": 2.2830636679953518,
+            "tokens_per_joule": 3.4922534497913498,
+            "tokens_per_s": 438.0079338208083,
+            "tokens_per_s_per_kusd": 121.93984794565932
           }
         }
       },
@@ -743,13 +743,13 @@
           },
           "feasible": true,
           "metrics": {
-            "average_power_w": 104.88859841484444,
+            "average_power_w": 104.88859841605586,
             "cost_usd": 1692.0,
-            "link_mb_per_token": 30.790359932800087,
-            "token_latency_ms": 5.898432919021144,
-            "tokens_per_joule": 1.5865230401771206,
-            "tokens_per_s": 166.4081780370361,
-            "tokens_per_s_per_kusd": 98.34998701952487
+            "link_mb_per_token": 30.790359932800186,
+            "token_latency_ms": 5.898432918532156,
+            "tokens_per_joule": 1.5865230402878936,
+            "tokens_per_s": 166.40817805057688,
+            "tokens_per_s_per_kusd": 98.3499870275277
           }
         },
         "best_conventional": {
@@ -765,13 +765,13 @@
           },
           "feasible": true,
           "metrics": {
-            "average_power_w": 104.88859841484444,
+            "average_power_w": 104.88859841605586,
             "cost_usd": 1692.0,
-            "link_mb_per_token": 30.790359932800087,
-            "token_latency_ms": 5.898432919021144,
-            "tokens_per_joule": 1.5865230401771206,
-            "tokens_per_s": 166.4081780370361,
-            "tokens_per_s_per_kusd": 98.34998701952487
+            "link_mb_per_token": 30.790359932800186,
+            "token_latency_ms": 5.898432918532156,
+            "tokens_per_joule": 1.5865230402878936,
+            "tokens_per_s": 166.40817805057688,
+            "tokens_per_s_per_kusd": 98.3499870275277
           }
         }
       },
@@ -789,13 +789,13 @@
           },
           "feasible": true,
           "metrics": {
-            "average_power_w": 125.42272206473352,
+            "average_power_w": 125.42272206703034,
             "cost_usd": 3592.0,
             "link_mb_per_token": 0.0,
-            "token_latency_ms": 2.2830636682448286,
-            "tokens_per_joule": 3.4922534494736936,
-            "tokens_per_s": 438.007933772946,
-            "tokens_per_s_per_kusd": 121.93984793233463
+            "token_latency_ms": 2.2830636679953518,
+            "tokens_per_joule": 3.4922534497913498,
+            "tokens_per_s": 438.0079338208083,
+            "tokens_per_s_per_kusd": 121.93984794565932
           }
         },
         "best_conventional": {
@@ -811,13 +811,13 @@
           },
           "feasible": true,
           "metrics": {
-            "average_power_w": 125.42272206473352,
+            "average_power_w": 125.42272206703034,
             "cost_usd": 3592.0,
             "link_mb_per_token": 0.0,
-            "token_latency_ms": 2.2830636682448286,
-            "tokens_per_joule": 3.4922534494736936,
-            "tokens_per_s": 438.007933772946,
-            "tokens_per_s_per_kusd": 121.93984793233463
+            "token_latency_ms": 2.2830636679953518,
+            "tokens_per_joule": 3.4922534497913498,
+            "tokens_per_s": 438.0079338208083,
+            "tokens_per_s_per_kusd": 121.93984794565932
           }
         }
       },
@@ -835,13 +835,13 @@
           },
           "feasible": true,
           "metrics": {
-            "average_power_w": 125.42272206473352,
+            "average_power_w": 125.42272206703034,
             "cost_usd": 3592.0,
             "link_mb_per_token": 0.0,
-            "token_latency_ms": 2.2830636682448286,
-            "tokens_per_joule": 3.4922534494736936,
-            "tokens_per_s": 438.007933772946,
-            "tokens_per_s_per_kusd": 121.93984793233463
+            "token_latency_ms": 2.2830636679953518,
+            "tokens_per_joule": 3.4922534497913498,
+            "tokens_per_s": 438.0079338208083,
+            "tokens_per_s_per_kusd": 121.93984794565932
           }
         },
         "best_conventional": {
@@ -857,13 +857,13 @@
           },
           "feasible": true,
           "metrics": {
-            "average_power_w": 125.42272206473352,
+            "average_power_w": 125.42272206703034,
             "cost_usd": 3592.0,
             "link_mb_per_token": 0.0,
-            "token_latency_ms": 2.2830636682448286,
-            "tokens_per_joule": 3.4922534494736936,
-            "tokens_per_s": 438.007933772946,
-            "tokens_per_s_per_kusd": 121.93984793233463
+            "token_latency_ms": 2.2830636679953518,
+            "tokens_per_joule": 3.4922534497913498,
+            "tokens_per_s": 438.0079338208083,
+            "tokens_per_s_per_kusd": 121.93984794565932
           }
         }
       }
@@ -883,13 +883,13 @@
           },
           "feasible": true,
           "metrics": {
-            "average_power_w": 125.42272206473352,
+            "average_power_w": 125.42272206703034,
             "cost_usd": 3592.0,
             "link_mb_per_token": 0.0,
-            "token_latency_ms": 2.2830636682448286,
-            "tokens_per_joule": 3.4922534494736936,
-            "tokens_per_s": 438.007933772946,
-            "tokens_per_s_per_kusd": 121.93984793233463
+            "token_latency_ms": 2.2830636679953518,
+            "tokens_per_joule": 3.4922534497913498,
+            "tokens_per_s": 438.0079338208083,
+            "tokens_per_s_per_kusd": 121.93984794565932
           }
         },
         "best_conventional": {
@@ -905,13 +905,13 @@
           },
           "feasible": true,
           "metrics": {
-            "average_power_w": 125.42272206473352,
+            "average_power_w": 125.42272206703034,
             "cost_usd": 3592.0,
             "link_mb_per_token": 0.0,
-            "token_latency_ms": 2.2830636682448286,
-            "tokens_per_joule": 3.4922534494736936,
-            "tokens_per_s": 438.007933772946,
-            "tokens_per_s_per_kusd": 121.93984793233463
+            "token_latency_ms": 2.2830636679953518,
+            "tokens_per_joule": 3.4922534497913498,
+            "tokens_per_s": 438.0079338208083,
+            "tokens_per_s_per_kusd": 121.93984794565932
           }
         }
       },
@@ -929,13 +929,13 @@
           },
           "feasible": true,
           "metrics": {
-            "average_power_w": 125.42272206473352,
+            "average_power_w": 125.42272206703034,
             "cost_usd": 3592.0,
             "link_mb_per_token": 0.0,
-            "token_latency_ms": 2.2830636682448286,
-            "tokens_per_joule": 3.4922534494736936,
-            "tokens_per_s": 438.007933772946,
-            "tokens_per_s_per_kusd": 121.93984793233463
+            "token_latency_ms": 2.2830636679953518,
+            "tokens_per_joule": 3.4922534497913498,
+            "tokens_per_s": 438.0079338208083,
+            "tokens_per_s_per_kusd": 121.93984794565932
           }
         },
         "best_conventional": {
@@ -951,13 +951,13 @@
           },
           "feasible": true,
           "metrics": {
-            "average_power_w": 125.42272206473352,
+            "average_power_w": 125.42272206703034,
             "cost_usd": 3592.0,
             "link_mb_per_token": 0.0,
-            "token_latency_ms": 2.2830636682448286,
-            "tokens_per_joule": 3.4922534494736936,
-            "tokens_per_s": 438.007933772946,
-            "tokens_per_s_per_kusd": 121.93984793233463
+            "token_latency_ms": 2.2830636679953518,
+            "tokens_per_joule": 3.4922534497913498,
+            "tokens_per_s": 438.0079338208083,
+            "tokens_per_s_per_kusd": 121.93984794565932
           }
         }
       },
@@ -975,13 +975,13 @@
           },
           "feasible": true,
           "metrics": {
-            "average_power_w": 125.42272206473352,
+            "average_power_w": 125.42272206703034,
             "cost_usd": 3592.0,
             "link_mb_per_token": 0.0,
-            "token_latency_ms": 2.2830636682448286,
-            "tokens_per_joule": 3.4922534494736936,
-            "tokens_per_s": 438.007933772946,
-            "tokens_per_s_per_kusd": 121.93984793233463
+            "token_latency_ms": 2.2830636679953518,
+            "tokens_per_joule": 3.4922534497913498,
+            "tokens_per_s": 438.0079338208083,
+            "tokens_per_s_per_kusd": 121.93984794565932
           }
         },
         "best_conventional": {
@@ -997,13 +997,13 @@
           },
           "feasible": true,
           "metrics": {
-            "average_power_w": 125.42272206473352,
+            "average_power_w": 125.42272206703034,
             "cost_usd": 3592.0,
             "link_mb_per_token": 0.0,
-            "token_latency_ms": 2.2830636682448286,
-            "tokens_per_joule": 3.4922534494736936,
-            "tokens_per_s": 438.007933772946,
-            "tokens_per_s_per_kusd": 121.93984793233463
+            "token_latency_ms": 2.2830636679953518,
+            "tokens_per_joule": 3.4922534497913498,
+            "tokens_per_s": 438.0079338208083,
+            "tokens_per_s_per_kusd": 121.93984794565932
           }
         }
       }
@@ -1038,13 +1038,13 @@
           },
           "feasible": true,
           "metrics": {
-            "average_power_w": 125.42272206473352,
+            "average_power_w": 125.42272206703034,
             "cost_usd": 3592.0,
             "link_mb_per_token": 0.0,
-            "token_latency_ms": 2.2830636682448286,
-            "tokens_per_joule": 3.4922534494736936,
-            "tokens_per_s": 438.007933772946,
-            "tokens_per_s_per_kusd": 121.93984793233463
+            "token_latency_ms": 2.2830636679953518,
+            "tokens_per_joule": 3.4922534497913498,
+            "tokens_per_s": 438.0079338208083,
+            "tokens_per_s_per_kusd": 121.93984794565932
           }
         },
         "evaluated": 3,
@@ -1061,13 +1061,13 @@
           },
           "feasible": true,
           "metrics": {
-            "average_power_w": 125.42272206473352,
+            "average_power_w": 125.42272206703034,
             "cost_usd": 3592.0,
             "link_mb_per_token": 0.0,
-            "token_latency_ms": 2.2830636682448286,
-            "tokens_per_joule": 3.4922534494736936,
-            "tokens_per_s": 438.007933772946,
-            "tokens_per_s_per_kusd": 121.93984793233463
+            "token_latency_ms": 2.2830636679953518,
+            "tokens_per_joule": 3.4922534497913498,
+            "tokens_per_s": 438.0079338208083,
+            "tokens_per_s_per_kusd": 121.93984794565932
           }
         },
         "most_efficient": {
@@ -1083,13 +1083,13 @@
           },
           "feasible": true,
           "metrics": {
-            "average_power_w": 125.42272206473352,
+            "average_power_w": 125.42272206703034,
             "cost_usd": 3592.0,
             "link_mb_per_token": 0.0,
-            "token_latency_ms": 2.2830636682448286,
-            "tokens_per_joule": 3.4922534494736936,
-            "tokens_per_s": 438.007933772946,
-            "tokens_per_s_per_kusd": 121.93984793233463
+            "token_latency_ms": 2.2830636679953518,
+            "tokens_per_joule": 3.4922534497913498,
+            "tokens_per_s": 438.0079338208083,
+            "tokens_per_s_per_kusd": 121.93984794565932
           }
         }
       },
@@ -1107,11 +1107,11 @@
           },
           "feasible": true,
           "metrics": {
-            "average_power_w": 93.94363637029362,
+            "average_power_w": 93.9436363675197,
             "cost_usd": 3536.0,
             "link_mb_per_token": 1.48352,
             "token_latency_ms": 13.222167726191174,
-            "tokens_per_joule": 0.8050631925484817,
+            "tokens_per_joule": 0.8050631925722531,
             "tokens_per_s": 75.63056381588223,
             "tokens_per_s_per_kusd": 21.388734110826423
           }
@@ -1130,11 +1130,11 @@
           },
           "feasible": true,
           "metrics": {
-            "average_power_w": 180.07154757231783,
+            "average_power_w": 180.07154756877955,
             "cost_usd": 13352.0,
             "link_mb_per_token": 4.554048,
             "token_latency_ms": 10.365878285714292,
-            "tokens_per_joule": 0.5357334922799734,
+            "tokens_per_joule": 0.5357334922905002,
             "tokens_per_s": 96.47035904117719,
             "tokens_per_s_per_kusd": 7.2251617017059
           }
@@ -1152,11 +1152,11 @@
           },
           "feasible": true,
           "metrics": {
-            "average_power_w": 94.06056214957958,
+            "average_power_w": 94.06056214679111,
             "cost_usd": 5624.0,
             "link_mb_per_token": 1.48352,
             "token_latency_ms": 13.153212619048373,
-            "tokens_per_joule": 0.8082776862233918,
+            "tokens_per_joule": 0.8082776862473536,
             "tokens_per_s": 76.02705353913373,
             "tokens_per_s_per_kusd": 13.518323886759198
           }
@@ -1176,11 +1176,11 @@
           },
           "feasible": true,
           "metrics": {
-            "average_power_w": 84.86308607290665,
+            "average_power_w": 84.86308607086283,
             "cost_usd": 3424.0,
             "link_mb_per_token": 0.615936,
             "token_latency_ms": 17.945484000001876,
-            "tokens_per_joule": 0.6566379864650039,
+            "tokens_per_joule": 0.6566379864808183,
             "tokens_per_s": 55.72432596411975,
             "tokens_per_s_per_kusd": 16.2746279100817
           }
@@ -1199,11 +1199,11 @@
           },
           "feasible": true,
           "metrics": {
-            "average_power_w": 84.88955130757807,
+            "average_power_w": 84.88955130553097,
             "cost_usd": 5512.0,
             "link_mb_per_token": 0.6159359999999999,
             "token_latency_ms": 17.916612000001884,
-            "tokens_per_joule": 0.657491091973311,
+            "tokens_per_joule": 0.6574910919891664,
             "tokens_per_s": 55.81412378634392,
             "tokens_per_s_per_kusd": 10.125929569365734
           }
@@ -1221,11 +1221,11 @@
           },
           "feasible": true,
           "metrics": {
-            "average_power_w": 84.88955130757807,
+            "average_power_w": 84.88955130553097,
             "cost_usd": 5512.0,
             "link_mb_per_token": 0.6159359999999999,
             "token_latency_ms": 17.916612000001884,
-            "tokens_per_joule": 0.657491091973311,
+            "tokens_per_joule": 0.6574910919891664,
             "tokens_per_s": 55.81412378634392,
             "tokens_per_s_per_kusd": 10.125929569365734
           }
@@ -1245,13 +1245,13 @@
           },
           "feasible": true,
           "metrics": {
-            "average_power_w": 129.9690729602847,
+            "average_power_w": 129.96907296114574,
             "cost_usd": 6036.0,
             "link_mb_per_token": 3.93216,
-            "token_latency_ms": 7.570137173942854,
-            "tokens_per_joule": 1.0163802786300087,
-            "tokens_per_s": 132.09800258865812,
-            "tokens_per_s_per_kusd": 21.885023623038126
+            "token_latency_ms": 7.570137173453831,
+            "tokens_per_joule": 1.0163802786889322,
+            "tokens_per_s": 132.0980025971915,
+            "tokens_per_s_per_kusd": 21.885023624451875
           }
         },
         "evaluated": 222,
@@ -1268,13 +1268,13 @@
           },
           "feasible": true,
           "metrics": {
-            "average_power_w": 206.98848790469756,
+            "average_power_w": 206.9884879063433,
             "cost_usd": 15472.0,
             "link_mb_per_token": 5.838336,
-            "token_latency_ms": 6.060908918857064,
-            "tokens_per_joule": 0.7971059490617358,
-            "tokens_per_s": 164.99175509612758,
-            "tokens_per_s_per_kusd": 10.663893168053747
+            "token_latency_ms": 6.060908918404259,
+            "tokens_per_joule": 0.7971059491149493,
+            "tokens_per_s": 164.99175510845396,
+            "tokens_per_s_per_kusd": 10.663893168850436
           }
         },
         "most_efficient": {
@@ -1290,13 +1290,13 @@
           },
           "feasible": true,
           "metrics": {
-            "average_power_w": 133.67238471166752,
+            "average_power_w": 133.67238471176543,
             "cost_usd": 7936.0,
             "link_mb_per_token": 3.93216,
-            "token_latency_ms": 6.694942329469411,
-            "tokens_per_joule": 1.1174071957309732,
-            "tokens_per_s": 149.36648454733623,
-            "tokens_per_s_per_kusd": 18.821381621388134
+            "token_latency_ms": 6.694942329219945,
+            "tokens_per_joule": 1.1174071957717915,
+            "tokens_per_s": 149.3664845529019,
+            "tokens_per_s_per_kusd": 18.821381622089454
           }
         }
       },
@@ -1314,13 +1314,13 @@
           },
           "feasible": true,
           "metrics": {
-            "average_power_w": 169.2590305229203,
+            "average_power_w": 169.25903052534892,
             "cost_usd": 8580.0,
             "link_mb_per_token": 3.145728,
-            "token_latency_ms": 5.2304068882283,
-            "tokens_per_joule": 1.1295687678858777,
-            "tokens_per_s": 191.18971456133326,
-            "tokens_per_s_per_kusd": 22.28318351530691
+            "token_latency_ms": 5.230406887739316,
+            "tokens_per_joule": 1.129568767975272,
+            "tokens_per_s": 191.18971457920733,
+            "tokens_per_s_per_kusd": 22.283183517390132
           }
         },
         "evaluated": 276,
@@ -1337,13 +1337,13 @@
           },
           "feasible": true,
           "metrics": {
-            "average_power_w": 296.711066623544,
+            "average_power_w": 296.71106662462677,
             "cost_usd": 20944.0,
             "link_mb_per_token": 6.291456,
-            "token_latency_ms": 4.420748043754977,
-            "tokens_per_joule": 0.7623782395466725,
-            "tokens_per_s": 226.20606062647292,
-            "tokens_per_s_per_kusd": 10.800518555503864
+            "token_latency_ms": 4.42074804350551,
+            "tokens_per_joule": 0.7623782395869122,
+            "tokens_per_s": 226.20606063923796,
+            "tokens_per_s_per_kusd": 10.800518556113348
           }
         },
         "most_efficient": {
@@ -1359,13 +1359,13 @@
           },
           "feasible": true,
           "metrics": {
-            "average_power_w": 150.434705571527,
+            "average_power_w": 150.434705571951,
             "cost_usd": 9424.0,
             "link_mb_per_token": 3.145728,
-            "token_latency_ms": 5.524903472326146,
-            "tokens_per_joule": 1.203170748835764,
-            "tokens_per_s": 180.99863735338178,
-            "tokens_per_s_per_kusd": 19.206137240384315
+            "token_latency_ms": 5.524903472076679,
+            "tokens_per_joule": 1.2031707488866996,
+            "tokens_per_s": 180.99863736155447,
+            "tokens_per_s_per_kusd": 19.206137241251533
           }
         }
       },
@@ -1383,13 +1383,13 @@
           },
           "feasible": true,
           "metrics": {
-            "average_power_w": 141.18272206473353,
+            "average_power_w": 141.18272206703034,
             "cost_usd": 7056.0,
             "link_mb_per_token": 0.0,
-            "token_latency_ms": 2.2830636682448286,
-            "tokens_per_joule": 3.1024188184451886,
-            "tokens_per_s": 438.007933772946,
-            "tokens_per_s_per_kusd": 62.07595433290051
+            "token_latency_ms": 2.2830636679953518,
+            "tokens_per_joule": 3.102418818733727,
+            "tokens_per_s": 438.0079338208083,
+            "tokens_per_s_per_kusd": 62.07595433968372
           }
         },
         "evaluated": 205,
@@ -1406,13 +1406,13 @@
           },
           "feasible": true,
           "metrics": {
-            "average_power_w": 141.18272206473353,
+            "average_power_w": 141.18272206703034,
             "cost_usd": 7056.0,
             "link_mb_per_token": 0.0,
-            "token_latency_ms": 2.2830636682448286,
-            "tokens_per_joule": 3.1024188184451886,
-            "tokens_per_s": 438.007933772946,
-            "tokens_per_s_per_kusd": 62.07595433290051
+            "token_latency_ms": 2.2830636679953518,
+            "tokens_per_joule": 3.102418818733727,
+            "tokens_per_s": 438.0079338208083,
+            "tokens_per_s_per_kusd": 62.07595433968372
           }
         },
         "most_efficient": {
@@ -1428,13 +1428,13 @@
           },
           "feasible": true,
           "metrics": {
-            "average_power_w": 141.18272206473353,
+            "average_power_w": 141.18272206703034,
             "cost_usd": 7056.0,
             "link_mb_per_token": 0.0,
-            "token_latency_ms": 2.2830636682448286,
-            "tokens_per_joule": 3.1024188184451886,
-            "tokens_per_s": 438.007933772946,
-            "tokens_per_s_per_kusd": 62.07595433290051
+            "token_latency_ms": 2.2830636679953518,
+            "tokens_per_joule": 3.102418818733727,
+            "tokens_per_s": 438.0079338208083,
+            "tokens_per_s_per_kusd": 62.07595433968372
           }
         }
       },
@@ -1452,13 +1452,13 @@
           },
           "feasible": true,
           "metrics": {
-            "average_power_w": 131.02425541658144,
+            "average_power_w": 131.02425541754684,
             "cost_usd": 6036.0,
             "link_mb_per_token": 1.572864,
-            "token_latency_ms": 7.286251459656984,
-            "tokens_per_joule": 1.0474761524112586,
-            "tokens_per_s": 137.24478293631074,
-            "tokens_per_s_per_kusd": 22.73770426380231
+            "token_latency_ms": 7.286251459167966,
+            "tokens_per_joule": 1.0474761524738423,
+            "tokens_per_s": 137.24478294552193,
+            "tokens_per_s_per_kusd": 22.73770426532835
           }
         },
         "evaluated": 378,
@@ -1475,13 +1475,13 @@
           },
           "feasible": true,
           "metrics": {
-            "average_power_w": 229.0878992635236,
+            "average_power_w": 229.08789926643286,
             "cost_usd": 15152.0,
             "link_mb_per_token": 6.186496,
-            "token_latency_ms": 4.87611720457132,
-            "tokens_per_joule": 0.8952075045990158,
-            "tokens_per_s": 205.0812066335297,
-            "tokens_per_s_per_kusd": 13.534926520164314
+            "token_latency_ms": 4.876117204118516,
+            "tokens_per_joule": 0.8952075046707778,
+            "tokens_per_s": 205.08120665257385,
+            "tokens_per_s_per_kusd": 13.53492652142119
           }
         },
         "most_efficient": {
@@ -1497,13 +1497,13 @@
           },
           "feasible": true,
           "metrics": {
-            "average_power_w": 145.36116264961504,
+            "average_power_w": 145.3611626497741,
             "cost_usd": 9056.0,
             "link_mb_per_token": 1.572864,
-            "token_latency_ms": 6.39467261518356,
-            "tokens_per_joule": 1.0758043524874985,
-            "tokens_per_s": 156.38017146109908,
-            "tokens_per_s_per_kusd": 17.268128474061296
+            "token_latency_ms": 6.394672614934092,
+            "tokens_per_joule": 1.0758043525282905,
+            "tokens_per_s": 156.38017146719977,
+            "tokens_per_s_per_kusd": 17.268128474734958
           }
         }
       },
@@ -1521,13 +1521,13 @@
           },
           "feasible": true,
           "metrics": {
-            "average_power_w": 141.18272206473353,
+            "average_power_w": 141.18272206703034,
             "cost_usd": 6156.0,
             "link_mb_per_token": 0.0,
-            "token_latency_ms": 2.2830636682448286,
-            "tokens_per_joule": 3.1024188184451886,
-            "tokens_per_s": 438.007933772946,
-            "tokens_per_s_per_kusd": 71.1513862529152
+            "token_latency_ms": 2.2830636679953518,
+            "tokens_per_joule": 3.102418818733727,
+            "tokens_per_s": 438.0079338208083,
+            "tokens_per_s_per_kusd": 71.1513862606901
           }
         },
         "evaluated": 666,
@@ -1544,13 +1544,13 @@
           },
           "feasible": true,
           "metrics": {
-            "average_power_w": 141.18272206473353,
+            "average_power_w": 141.18272206703034,
             "cost_usd": 6156.0,
             "link_mb_per_token": 0.0,
-            "token_latency_ms": 2.2830636682448286,
-            "tokens_per_joule": 3.1024188184451886,
-            "tokens_per_s": 438.007933772946,
-            "tokens_per_s_per_kusd": 71.1513862529152
+            "token_latency_ms": 2.2830636679953518,
+            "tokens_per_joule": 3.102418818733727,
+            "tokens_per_s": 438.0079338208083,
+            "tokens_per_s_per_kusd": 71.1513862606901
           }
         },
         "most_efficient": {
@@ -1566,13 +1566,13 @@
           },
           "feasible": true,
           "metrics": {
-            "average_power_w": 141.18272206473353,
+            "average_power_w": 141.18272206703034,
             "cost_usd": 6156.0,
             "link_mb_per_token": 0.0,
-            "token_latency_ms": 2.2830636682448286,
-            "tokens_per_joule": 3.1024188184451886,
-            "tokens_per_s": 438.007933772946,
-            "tokens_per_s_per_kusd": 71.1513862529152
+            "token_latency_ms": 2.2830636679953518,
+            "tokens_per_joule": 3.102418818733727,
+            "tokens_per_s": 438.0079338208083,
+            "tokens_per_s_per_kusd": 71.1513862606901
           }
         }
       }
@@ -1583,13 +1583,13 @@
         "desktop_gpu12": "9268e00f25425e33edf0ab30b45fef35858163d7f6e098facdbceb303c3bfd49"
       },
       "environment": {
-        "basp": "0.2.0",
+        "basp": "0.3.0",
         "numpy": "2.5.3",
         "platform": "Linux-6.18.44-fc-v880-x86_64-with-glibc2.39",
         "python": "3.13.18"
       },
       "git": {
-        "commit": "dd8b10e48ace1aa99c337fbb27be970aaa9bd16d",
+        "commit": "78f8903feb5732025860c26a9d71d1bb5d309ac4",
         "dirty": true
       },
       "inputs": {
@@ -1613,7 +1613,7 @@
           "warmup_tokens": 2
         }
       },
-      "source": "5ad1abfadc88c88df0ea1881e35f06aaa532aad096e6dd95311069ecb2059ea9"
+      "source": "12793a2bda679d1c143d060d9d48f58126affe0217540181755c0da330eba20e"
     },
     "space_size": 27648,
     "workload": {
@@ -1632,55 +1632,55 @@
   "dse_stale": [],
   "energy": [
     {
-      "average_power_w": 154.6453729510103,
+      "average_power_w": 154.64537295212017,
       "investigation": "energy",
-      "link_mb_per_token": 15.55186760106637,
-      "tokens_per_joule": 1.2913058172356606,
-      "tokens_per_s": 199.6944697002179,
+      "link_mb_per_token": 15.551867601066398,
+      "tokens_per_joule": 1.2913058173524938,
+      "tokens_per_s": 199.6944697197188,
       "variant": "F: no power gating"
     },
     {
-      "average_power_w": 154.6453729510103,
+      "average_power_w": 154.64537295212017,
       "investigation": "energy",
-      "link_mb_per_token": 15.55186760106637,
+      "link_mb_per_token": 15.551867601066398,
       "speedup": 1.0,
-      "tokens_per_joule": 1.2913058172356606,
-      "tokens_per_s": 199.6944697002179,
+      "tokens_per_joule": 1.2913058173524938,
+      "tokens_per_s": 199.6944697197188,
       "variant": "F: idle devices gated"
     },
     {
-      "average_power_w": 154.6453729510103,
+      "average_power_w": 154.64537295212017,
       "investigation": "energy",
-      "link_mb_per_token": 15.55186760106637,
+      "link_mb_per_token": 15.551867601066398,
       "speedup": 1.0,
-      "tokens_per_joule": 1.2913058172356606,
-      "tokens_per_s": 199.6944697002179,
+      "tokens_per_joule": 1.2913058173524938,
+      "tokens_per_s": 199.6944697197188,
       "variant": "F: energy-aware scheduling (0.001 s per joule)"
     },
     {
-      "average_power_w": 154.6453729510103,
+      "average_power_w": 154.64537295212017,
       "investigation": "energy",
-      "link_mb_per_token": 15.55186760106637,
+      "link_mb_per_token": 15.551867601066398,
       "speedup": 1.0,
-      "tokens_per_joule": 1.2913058172356606,
-      "tokens_per_s": 199.6944697002179,
+      "tokens_per_joule": 1.2913058173524938,
+      "tokens_per_s": 199.6944697197188,
       "variant": "F: energy-aware scheduling (0.01 s per joule)"
     },
     {
-      "average_power_w": 105.9938832948573,
+      "average_power_w": 105.99388329619268,
       "investigation": "energy",
-      "link_mb_per_token": 25.278990169599872,
-      "tokens_per_joule": 1.6110119888879841,
-      "tokens_per_s": 170.75741673680892,
+      "link_mb_per_token": 25.278990169599897,
+      "tokens_per_joule": 1.611011989002206,
+      "tokens_per_s": 170.75741675106707,
       "variant": "A: time-only scheduling"
     },
     {
-      "average_power_w": 105.9938832948573,
+      "average_power_w": 105.99388329619268,
       "investigation": "energy",
-      "link_mb_per_token": 25.278990169599872,
+      "link_mb_per_token": 25.278990169599897,
       "speedup": 1.0,
-      "tokens_per_joule": 1.6110119888879841,
-      "tokens_per_s": 170.75741673680892,
+      "tokens_per_joule": 1.611011989002206,
+      "tokens_per_s": 170.75741675106707,
       "variant": "A: energy-aware scheduling (0.01 s per joule)"
     }
   ],
@@ -1848,73 +1848,74 @@
   ],
   "imbalance": [
     {
-      "average_power_w": 98.15326020777061,
+      "average_power_w": 98.1532602076547,
       "efficiency": 1.0,
       "investigation": "expert imbalance",
       "link_mb_per_token": 3.538944,
       "modules": 1,
-      "tokens_per_joule": 0.4672595977870217,
-      "tokens_per_s": 45.86305288616778,
+      "tokens_per_joule": 0.46725959779805154,
+      "tokens_per_s": 45.86305288719623,
       "variant": "one module (baseline)"
     },
     {
-      "average_power_w": 147.85618206369062,
-      "efficiency": 0.49733697586986914,
+      "average_power_w": 147.8561820638949,
+      "efficiency": 0.49733697588090814,
       "investigation": "expert imbalance",
       "link_mb_per_token": 4.591616,
       "modules": 4,
-      "speedup": 1.9893479034794765,
-      "tokens_per_joule": 0.617069687806254,
-      "tokens_per_s": 91.23756810626622,
+      "speedup": 1.9893479035236326,
+      "tokens_per_joule": 0.6170696878329356,
+      "tokens_per_s": 91.2375681103373,
       "variant": "round-robin placement"
     },
     {
-      "average_power_w": 147.87891879105115,
-      "efficiency": 0.4979210232379517,
+      "average_power_w": 147.87891879125672,
+      "efficiency": 0.49792102324902976,
       "investigation": "expert imbalance",
       "link_mb_per_token": 4.573184,
       "modules": 4,
-      "speedup": 1.9916840929518067,
-      "tokens_per_joule": 0.6176993558943678,
-      "tokens_per_s": 91.34471288758782,
+      "speedup": 1.991684092996119,
+      "tokens_per_joule": 0.6176993559211036,
+      "tokens_per_s": 91.34471289166846,
       "variant": "frequency-balanced placement"
     },
     {
-      "average_power_w": 147.81218133215347,
-      "efficiency": 0.49622694333318557,
+      "average_power_w": 147.81218133235532,
+      "efficiency": 0.4962269433441507,
       "investigation": "expert imbalance",
       "link_mb_per_token": 4.569088,
       "modules": 4,
-      "speedup": 1.9849077733327423,
-      "tokens_per_joule": 0.6158756968612745,
-      "tokens_per_s": 91.03393018252508,
+      "speedup": 1.9849077733766027,
+      "tokens_per_joule": 0.615875696887853,
+      "tokens_per_s": 91.03393018657805,
       "variant": "co-activation-aware placement"
     },
     {
-      "average_power_w": 151.15425535359262,
-      "efficiency": 0.5811435187169077,
+      "average_power_w": 151.15425535400317,
+      "efficiency": 0.5811435187341747,
       "investigation": "expert imbalance",
       "link_mb_per_token": 4.54656,
       "modules": 4,
-      "speedup": 2.324574074867631,
-      "tokens_per_joule": 0.7053196318163382,
-      "tokens_per_s": 106.6120637334687,
+      "speedup": 2.3245740749366988,
+      "tokens_per_joule": 0.7053196318511953,
+      "tokens_per_s": 106.61206373902708,
       "variant": "co-activation-aware, every expert on 2 modules"
     },
     {
-      "average_power_w": 156.48179813093978,
-      "efficiency": 0.7171974995018975,
+      "average_power_w": 156.48179813178905,
+      "efficiency": 0.7171974995319566,
       "investigation": "expert imbalance",
       "link_mb_per_token": 3.145728,
       "modules": 4,
-      "speedup": 2.86878999800759,
-      "tokens_per_joule": 0.8408100428896899,
-      "tokens_per_s": 131.57146739793126,
+      "speedup": 2.868789998127826,
+      "tokens_per_joule": 0.840810042939221,
+      "tokens_per_s": 131.57146740639607,
       "variant": "tensor-parallel (every expert on all modules)"
     }
   ],
   "inputs": {
     "configs": {
+      "colab_t4": "e389a091737465829bcac1dc8f9227830da17dadd81aebe6ef37577e905b2e58",
       "design_estimates": "85aa9e05c90c67daffc8e3f5c7dfe7e7c1a8537d2ad800c59f58e14fec8b2824",
       "desktop_gpu12": "9268e00f25425e33edf0ab30b45fef35858163d7f6e098facdbceb303c3bfd49",
       "hardware_gate": "a82930ab81a4d8510c9a5dfae5fac48cce5fef6370113ca35f33f514ef9056f7",
@@ -1923,80 +1924,80 @@
     },
     "inputs": {
       "compression": null,
-      "dse": "067c1696718ded075b57a0229a9226574622d3572365dd61a957de69dc50d287",
+      "dse": "227d5a916be4bf8ee0fd6ab6f4d9d78cfffd992b3764ceeed2f9516426560efd",
       "measurements": null,
       "trace": null
     },
-    "source": "5ad1abfadc88c88df0ea1881e35f06aaa532aad096e6dd95311069ecb2059ea9"
+    "source": "12793a2bda679d1c143d060d9d48f58126affe0217540181755c0da330eba20e"
   },
   "launch_overhead": [
     {
-      "average_power_w": 108.87248709046253,
+      "average_power_w": 108.87248709191246,
       "investigation": "GPU launch overhead",
-      "link_mb_per_token": 25.921583155199993,
-      "tokens_per_joule": 1.4432675234008534,
-      "tokens_per_s": 157.13212480954323,
+      "link_mb_per_token": 25.92158315520001,
+      "tokens_per_joule": 1.443267523492524,
+      "tokens_per_s": 157.1321248216163,
       "variant": "one launch per expert"
     },
     {
-      "average_power_w": 105.9938832948573,
+      "average_power_w": 105.99388329619268,
       "investigation": "GPU launch overhead",
-      "link_mb_per_token": 25.278990169599872,
-      "speedup": 1.0867123253362776,
-      "tokens_per_joule": 1.6110119888879841,
-      "tokens_per_s": 170.75741673680892,
+      "link_mb_per_token": 25.278990169599897,
+      "speedup": 1.0867123253435214,
+      "tokens_per_joule": 1.611011989002206,
+      "tokens_per_s": 170.75741675106707,
       "variant": "experts batched into one launch"
     },
     {
-      "average_power_w": 106.56760423315482,
+      "average_power_w": 106.56760423455522,
       "investigation": "GPU launch overhead",
-      "link_mb_per_token": 23.94791085919991,
-      "speedup": 1.1001121086396135,
-      "tokens_per_joule": 1.6220966437516025,
-      "tokens_per_s": 172.8629531592495,
+      "link_mb_per_token": 23.947910859199926,
+      "speedup": 1.1001121086480805,
+      "tokens_per_joule": 1.622096643867403,
+      "tokens_per_s": 172.86295317386168,
       "variant": "persistent kernels"
     }
   ],
   "measured_formats": {},
   "memory_channels": [
     {
-      "average_power_w": 147.81218133215347,
+      "average_power_w": 147.81218133235532,
       "investigation": "memory channels",
       "link_mb_per_token": 4.569088,
-      "tokens_per_joule": 0.6158756968612745,
-      "tokens_per_s": 91.03393018252508,
+      "tokens_per_joule": 0.615875696887853,
+      "tokens_per_s": 91.03393018657805,
       "variant": "D: channels pooled per module"
     },
     {
-      "average_power_w": 143.53497384964845,
+      "average_power_w": 143.53497384965738,
       "investigation": "memory channels",
       "link_mb_per_token": 7.977984,
-      "speedup": 0.7806083579408882,
-      "tokens_per_joule": 0.4950838450782245,
-      "tokens_per_s": 71.06184675668636,
+      "speedup": 0.7806083579332621,
+      "tokens_per_joule": 0.49508384509539893,
+      "tokens_per_s": 71.06184675915591,
       "variant": "D: independent channel engines"
     },
     {
-      "average_power_w": 156.48179813093978,
+      "average_power_w": 156.48179813178905,
       "investigation": "memory channels",
       "link_mb_per_token": 3.145728,
-      "tokens_per_joule": 0.8408100428896899,
-      "tokens_per_s": 131.57146739793126,
+      "tokens_per_joule": 0.840810042939221,
+      "tokens_per_s": 131.57146740639607,
       "variant": "E: channels pooled per module"
     },
     {
-      "average_power_w": 156.30225474774778,
+      "average_power_w": 156.30225474857835,
       "investigation": "memory channels",
       "link_mb_per_token": 9.437184,
-      "speedup": 0.9914510470926079,
-      "tokens_per_joule": 0.8345795735942161,
-      "tokens_per_s": 130.44666911918986,
+      "speedup": 0.9914510470920624,
+      "tokens_per_joule": 0.8345795736430158,
+      "tokens_per_s": 130.44666912751055,
       "variant": "E: independent channel engines"
     }
   ],
   "model_suite": [
     {
-      "active_params_b": 4.02245888,
+      "active_params_b": 4.022468096,
       "best_module_arch": "H",
       "best_per_dollar": "A",
       "bits_per_weight": 4.5,
@@ -2011,29 +2012,29 @@
       "gpu_gib": 12,
       "key": "qwen3-4b",
       "model": "Qwen3-4B",
-      "params_b": 4.02245888,
+      "params_b": 4.022468096,
       "per_dollar_vs_a": 0.21559633027522934,
       "per_kusd": {
-        "A": 110.90067385658988,
-        "D": 3.7736341427147218,
-        "E": 11.777417833128643,
-        "F": 21.951794591173382,
-        "H": 23.909778308530843
+        "A": 110.90067386492795,
+        "D": 3.7736341427634956,
+        "E": 11.777417833603668,
+        "F": 21.95179459282383,
+        "H": 23.9097783103285
       },
       "purpose": "kernel validation",
       "source": "published config",
       "speedup_vs_a": 1.0,
       "tokens_per_s": {
-        "A": 187.64394016535007,
-        "D": 32.25702465192544,
-        "E": 100.67336763758364,
-        "F": 187.64394016535007,
-        "H": 187.64394016535007
+        "A": 187.6439401794581,
+        "D": 32.25702465234236,
+        "E": 100.67336764164415,
+        "F": 187.6439401794581,
+        "H": 187.6439401794581
       },
-      "weights_gib": 2.107241302728653
+      "weights_gib": 2.1072461307048798
     },
     {
-      "active_params_b": 8.190726144,
+      "active_params_b": 8.19073536,
       "best_module_arch": "H",
       "best_per_dollar": "A",
       "bits_per_weight": 4.5,
@@ -2048,29 +2049,29 @@
       "gpu_gib": 12,
       "key": "qwen3-8b",
       "model": "Qwen3-8B",
-      "params_b": 8.190726144,
-      "per_dollar_vs_a": 0.21559633027522937,
+      "params_b": 8.19073536,
+      "per_dollar_vs_a": 0.21559633027522934,
       "per_kusd": {
-        "A": 63.424507129065276,
-        "D": 1.9289196317135995,
-        "E": 6.480091743330188,
-        "F": 12.554312829010113,
-        "H": 13.674090986541596
+        "A": 63.424507125751816,
+        "D": 1.9289196316981227,
+        "E": 6.480091743155454,
+        "F": 12.554312828354243,
+        "H": 13.674090985827226
       },
       "purpose": "fully GPU-resident baseline",
       "source": "published config",
       "speedup_vs_a": 1.0,
       "tokens_per_s": {
-        "A": 107.31426606237845,
-        "D": 16.48840501188785,
-        "E": 55.39182422198645,
-        "F": 107.31426606237845,
-        "H": 107.31426606237845
+        "A": 107.31426605677207,
+        "D": 16.488405011755553,
+        "E": 55.39182422049282,
+        "F": 107.31426605677207,
+        "H": 107.31426605677207
       },
-      "weights_gib": 4.29086709022522
+      "weights_gib": 4.2908719182014465
     },
     {
-      "active_params_b": 14.76829696,
+      "active_params_b": 14.7683072,
       "best_module_arch": "H",
       "best_per_dollar": "A",
       "bits_per_weight": 4.5,
@@ -2085,29 +2086,29 @@
       "gpu_gib": 12,
       "key": "qwen3-14b",
       "model": "Qwen3-14B",
-      "params_b": 14.76829696,
-      "per_dollar_vs_a": 0.21559633027522934,
+      "params_b": 14.7683072,
+      "per_dollar_vs_a": 0.21559633027522937,
       "per_kusd": {
-        "A": 35.53503062739008,
-        "D": 0.9985926431051141,
-        "E": 3.5125566388031473,
-        "F": 7.03384087757885,
-        "H": 7.6612221994831815
+        "A": 35.53503062538332,
+        "D": 0.998592643097108,
+        "E": 3.5125566387040887,
+        "F": 7.033840877181631,
+        "H": 7.661222199050533
       },
       "purpose": "memory pressure and quantization",
       "source": "published config",
       "speedup_vs_a": 1.0,
       "tokens_per_s": {
-        "A": 60.12527182154401,
-        "D": 8.535969913262516,
-        "E": 30.025334148489303,
-        "F": 60.12527182154401,
-        "H": 60.12527182154401
+        "A": 60.12527181814858,
+        "D": 8.53596991319408,
+        "E": 30.025334147642553,
+        "F": 60.12527181814858,
+        "H": 60.12527181814858
       },
-      "weights_gib": 7.736652195453644
+      "weights_gib": 7.736657559871674
     },
     {
-      "active_params_b": 14.76829696,
+      "active_params_b": 14.7683072,
       "best_module_arch": "E",
       "best_per_dollar": "A",
       "bits_per_weight": 8.5,
@@ -2122,29 +2123,29 @@
       "gpu_gib": 12,
       "key": "qwen3-14b-int8",
       "model": "Qwen3-14B (INT8)",
-      "params_b": 14.76829696,
-      "per_dollar_vs_a": 0.2500889887799488,
+      "params_b": 14.7683072,
+      "per_dollar_vs_a": 0.2500889887784437,
       "per_kusd": {
-        "A": 7.61004109952052,
-        "D": 0.5319487411892415,
-        "E": 1.9031874831529365,
-        "F": 1.50084844344166,
-        "H": 1.637236711809262
+        "A": 7.610041099346675,
+        "D": 0.5319487411849497,
+        "E": 1.9031874830980058,
+        "F": 1.5008484434074996,
+        "H": 1.6372367117719393
       },
       "purpose": "memory pressure and quantization",
       "source": "published config",
-      "speedup_vs_a": 1.2634519362239967,
+      "speedup_vs_a": 1.2634519362163927,
       "tokens_per_s": {
-        "A": 12.876189540388719,
-        "D": 4.5470978396856365,
-        "E": 16.2684466059913,
-        "F": 12.829252494539311,
-        "H": 12.849033714279086
+        "A": 12.876189540094574,
+        "D": 4.54709783964895,
+        "E": 16.268446605521753,
+        "F": 12.829252494247307,
+        "H": 12.84903371398618
       },
-      "weights_gib": 14.613676369190216
+      "weights_gib": 14.613686501979828
     },
     {
-      "active_params_b": 3.353020416,
+      "active_params_b": 3.353032704,
       "best_module_arch": "H",
       "best_per_dollar": "A",
       "bits_per_weight": 4.5,
@@ -2159,26 +2160,26 @@
       "gpu_gib": 12,
       "key": "qwen3-30b-a3b",
       "model": "Qwen3-30B-A3B",
-      "params_b": 30.532110336,
-      "per_dollar_vs_a": 0.27512838057473904,
+      "params_b": 30.532122624,
+      "per_dollar_vs_a": 0.27512838058054745,
       "per_kusd": {
-        "A": 92.40173276988143,
-        "D": 12.744948159162583,
-        "E": 15.392673471305427,
-        "F": 22.456244419449153,
-        "H": 25.422339099277274
+        "A": 92.4017327769458,
+        "D": 12.74494815984166,
+        "E": 15.392673472295856,
+        "F": 22.456244421557066,
+        "H": 25.422339101757593
       },
       "purpose": "expert routing and CPU/GPU offloading",
       "source": "published config",
-      "speedup_vs_a": 1.2761273822402788,
+      "speedup_vs_a": 1.2761273822672203,
       "tokens_per_s": {
-        "A": 156.3437318466394,
-        "D": 108.94381686452175,
-        "E": 131.5765728327188,
-        "F": 191.95597729745134,
-        "H": 199.51451725112804
+        "A": 156.3437318585923,
+        "D": 108.94381687032651,
+        "E": 131.57657284118497,
+        "F": 191.9559773154698,
+        "H": 199.5145172705936
       },
-      "weights_gib": 15.994824528694153
+      "weights_gib": 15.994830965995789
     },
     {
       "active_params_b": 70.553706496,
@@ -2331,29 +2332,29 @@
   ],
   "output_projection": [
     {
-      "average_power_w": 148.4608052031599,
+      "average_power_w": 148.46080520338077,
       "investigation": "output projection",
       "link_mb_per_token": 5.2096,
-      "tokens_per_joule": 0.5868971779415312,
-      "tokens_per_s": 87.13122760866194,
+      "tokens_per_joule": 0.5868971779656673,
+      "tokens_per_s": 87.13122761237483,
       "variant": "row shards on the modules"
     },
     {
-      "average_power_w": 147.81218133215347,
+      "average_power_w": 147.81218133235532,
       "investigation": "output projection",
       "link_mb_per_token": 4.569088,
-      "speedup": 1.0447910890386118,
-      "tokens_per_joule": 0.6158756968612745,
-      "tokens_per_s": 91.03393018252508,
+      "speedup": 1.0447910890406062,
+      "tokens_per_joule": 0.615875696887853,
+      "tokens_per_s": 91.03393018657805,
       "variant": "on the trunk device"
     },
     {
-      "average_power_w": 147.81218133215347,
+      "average_power_w": 147.81218133235532,
       "investigation": "output projection",
       "link_mb_per_token": 4.569088,
-      "speedup": 1.0447910890386118,
-      "tokens_per_joule": 0.6158756968612745,
-      "tokens_per_s": 91.03393018252508,
+      "speedup": 1.0447910890406062,
+      "tokens_per_joule": 0.615875696887853,
+      "tokens_per_s": 91.03393018657805,
       "variant": "both; location chosen per token"
     }
   ],
@@ -2382,195 +2383,195 @@
       "efficiency": 1.0,
       "modules": 1,
       "speedup": 1.0,
-      "tokens_per_s": 45.86305288616778
+      "tokens_per_s": 45.86305288719623
     },
     {
       "architecture": "E tensor-parallel",
       "efficiency": 1.0,
       "modules": 1,
       "speedup": 1.0,
-      "tokens_per_s": 45.916963724843015
+      "tokens_per_s": 45.9169637258739
     },
     {
       "architecture": "D expert-local",
-      "efficiency": 0.7342470237295359,
+      "efficiency": 0.7342470237372541,
       "modules": 2,
-      "speedup": 1.4684940474590717,
-      "tokens_per_s": 67.34962016163799
+      "speedup": 1.4684940474745083,
+      "tokens_per_s": 67.34962016385623
     },
     {
       "architecture": "D with 2 replicas",
-      "efficiency": 0.8864086211912754,
+      "efficiency": 0.8864086212066443,
       "modules": 2,
-      "speedup": 1.7728172423825508,
-      "tokens_per_s": 81.30681094490104
+      "speedup": 1.7728172424132886,
+      "tokens_per_s": 81.30681094813404
     },
     {
       "architecture": "E tensor-parallel",
-      "efficiency": 0.8847759444851182,
+      "efficiency": 0.8847759445004119,
       "modules": 2,
-      "speedup": 1.7695518889702364,
-      "tokens_per_s": 81.25244989507378
+      "speedup": 1.7695518890008237,
+      "tokens_per_s": 81.25244989830246
     },
     {
       "architecture": "D expert-local",
-      "efficiency": 0.49622694333318557,
+      "efficiency": 0.4962269433441507,
       "modules": 4,
-      "speedup": 1.9849077733327423,
-      "tokens_per_s": 91.03393018252508
+      "speedup": 1.9849077733766027,
+      "tokens_per_s": 91.03393018657805
     },
     {
       "architecture": "D with 2 replicas",
-      "efficiency": 0.5811435187169077,
+      "efficiency": 0.5811435187341747,
       "modules": 4,
-      "speedup": 2.324574074867631,
-      "tokens_per_s": 106.6120637334687
+      "speedup": 2.3245740749366988,
+      "tokens_per_s": 106.61206373902708
     },
     {
       "architecture": "E tensor-parallel",
-      "efficiency": 0.716355442110524,
+      "efficiency": 0.7163554421405287,
       "modules": 4,
-      "speedup": 2.865421768442096,
-      "tokens_per_s": 131.57146739793126
+      "speedup": 2.865421768562115,
+      "tokens_per_s": 131.57146740639607
     },
     {
       "architecture": "D expert-local",
-      "efficiency": 0.32250585903436296,
+      "efficiency": 0.32250585904579193,
       "modules": 8,
-      "speedup": 2.5800468722749037,
-      "tokens_per_s": 118.32882615193567
+      "speedup": 2.5800468723663355,
+      "tokens_per_s": 118.32882615878248
     },
     {
       "architecture": "D with 2 replicas",
-      "efficiency": 0.3561711794758343,
+      "efficiency": 0.35617117949060695,
       "modules": 8,
-      "speedup": 2.8493694358066746,
-      "tokens_per_s": 130.68078112663156
+      "speedup": 2.8493694359248556,
+      "tokens_per_s": 130.68078113498214
     },
     {
       "architecture": "E tensor-parallel",
-      "efficiency": 0.5140169436563671,
+      "efficiency": 0.5140169436922872,
       "modules": 8,
-      "speedup": 4.112135549250937,
-      "tokens_per_s": 188.81677884659268
+      "speedup": 4.112135549538298,
+      "tokens_per_s": 188.81677886402656
     }
   ],
   "scheduler": [
     {
-      "average_power_w": 154.6453729510103,
+      "average_power_w": 154.64537295212017,
       "investigation": "scheduler",
       "joint_improvements": 0,
-      "link_mb_per_token": 15.55186760106637,
+      "link_mb_per_token": 15.551867601066398,
       "overhead": {
-        "1000 ns per plan evaluation": 0.27308218731504796,
-        "200 ns per plan evaluation": 0.05461643746300959,
-        "50 ns per plan evaluation": 0.013654109365752398
+        "1000 ns per plan evaluation": 0.2730821873417154,
+        "200 ns per plan evaluation": 0.05461643746834308,
+        "50 ns per plan evaluation": 0.01365410936708577
       },
       "plans_per_batch": 27.908163265306122,
       "speedup": 1.0,
-      "tokens_per_joule": 1.2913058172356606,
-      "tokens_per_s": 199.6944697002179,
+      "tokens_per_joule": 1.2913058173524938,
+      "tokens_per_s": 199.6944697197188,
       "variant": "greedy earliest-finish"
     },
     {
-      "average_power_w": 154.6453729510103,
+      "average_power_w": 154.64537295212017,
       "investigation": "scheduler",
       "joint_improvements": 0,
-      "link_mb_per_token": 15.55186760106637,
+      "link_mb_per_token": 15.551867601066398,
       "overhead": {
-        "1000 ns per plan evaluation": 2.1392270066635843,
-        "200 ns per plan evaluation": 0.4278454013327168,
-        "50 ns per plan evaluation": 0.1069613503331792
+        "1000 ns per plan evaluation": 2.1392270068724875,
+        "200 ns per plan evaluation": 0.4278454013744975,
+        "50 ns per plan evaluation": 0.10696135034362438
       },
       "plans_per_batch": 218.62244897959184,
       "speedup": 1.0,
-      "tokens_per_joule": 1.2913058172356606,
-      "tokens_per_s": 199.6944697002179,
+      "tokens_per_joule": 1.2913058173524938,
+      "tokens_per_s": 199.6944697197188,
       "variant": "one refinement pass"
     },
     {
-      "average_power_w": 154.6453729510103,
+      "average_power_w": 154.64537295212017,
       "investigation": "scheduler",
       "joint_improvements": 0,
-      "link_mb_per_token": 15.55186760106637,
+      "link_mb_per_token": 15.551867601066398,
       "overhead": {
-        "1000 ns per plan evaluation": 2.1392270066635843,
-        "200 ns per plan evaluation": 0.4278454013327168,
-        "50 ns per plan evaluation": 0.1069613503331792
+        "1000 ns per plan evaluation": 2.1392270068724875,
+        "200 ns per plan evaluation": 0.4278454013744975,
+        "50 ns per plan evaluation": 0.10696135034362438
       },
       "plans_per_batch": 218.62244897959184,
       "speedup": 1.0,
-      "tokens_per_joule": 1.2913058172356606,
-      "tokens_per_s": 199.6944697002179,
+      "tokens_per_joule": 1.2913058173524938,
+      "tokens_per_s": 199.6944697197188,
       "variant": "two refinement passes"
     },
     {
-      "average_power_w": 154.6453729510103,
+      "average_power_w": 154.64537295212017,
       "investigation": "scheduler",
       "joint_improvements": 0,
-      "link_mb_per_token": 15.55186760106637,
+      "link_mb_per_token": 15.551867601066398,
       "overhead": {
-        "1000 ns per plan evaluation": 2.1392270066635843,
-        "200 ns per plan evaluation": 0.4278454013327168,
-        "50 ns per plan evaluation": 0.1069613503331792
+        "1000 ns per plan evaluation": 2.1392270068724875,
+        "200 ns per plan evaluation": 0.4278454013744975,
+        "50 ns per plan evaluation": 0.10696135034362438
       },
       "plans_per_batch": 218.62244897959184,
       "speedup": 1.0,
-      "tokens_per_joule": 1.2913058172356606,
-      "tokens_per_s": 199.6944697002179,
+      "tokens_per_joule": 1.2913058173524938,
+      "tokens_per_s": 199.6944697197188,
       "variant": "four refinement passes"
     }
   ],
   "synchronisation": [
     {
-      "average_power_w": 147.81218133215347,
+      "average_power_w": 147.81218133235532,
       "investigation": "synchronisation",
       "link_mb_per_token": 4.569088,
-      "tokens_per_joule": 0.6158756968612745,
-      "tokens_per_s": 91.03393018252508,
+      "tokens_per_joule": 0.615875696887853,
+      "tokens_per_s": 91.03393018657805,
       "variant": "host in the loop (latencies x1)"
     },
     {
-      "average_power_w": 147.99307282850535,
+      "average_power_w": 147.99307282871717,
       "investigation": "synchronisation",
       "link_mb_per_token": 4.569088,
-      "speedup": 1.0092612030001022,
-      "tokens_per_joule": 0.6208196919886232,
-      "tokens_per_s": 91.87701388984257,
+      "speedup": 1.0092612030005181,
+      "tokens_per_joule": 0.6208196920156303,
+      "tokens_per_s": 91.87701389397094,
       "variant": "dependency events only (latencies x1)"
     },
     {
-      "average_power_w": 140.27625164313622,
+      "average_power_w": 140.2762516430541,
       "investigation": "synchronisation",
       "link_mb_per_token": 4.569088,
-      "tokens_per_joule": 0.39857858416013914,
-      "tokens_per_s": 55.91110977121262,
+      "tokens_per_joule": 0.3985785841712695,
+      "tokens_per_s": 55.91110977274123,
       "variant": "host in the loop (latencies x8)"
     },
     {
-      "average_power_w": 140.84266079948372,
+      "average_power_w": 140.84266079941395,
       "investigation": "synchronisation",
       "link_mb_per_token": 4.569088,
-      "speedup": 1.0472155114111459,
-      "tokens_per_joule": 0.41571908028621796,
-      "tokens_per_s": 58.55098141262514,
+      "speedup": 1.0472155114124986,
+      "tokens_per_joule": 0.4157190802983266,
+      "tokens_per_s": 58.550981414301546,
       "variant": "dependency events only (latencies x8)"
     },
     {
-      "average_power_w": 158.61323452984675,
+      "average_power_w": 158.61323453018088,
       "investigation": "synchronisation",
       "link_mb_per_token": 4.7185920000000205,
-      "tokens_per_joule": 1.1240308762388211,
-      "tokens_per_s": 178.28617299165728,
+      "tokens_per_joule": 1.1240308762609506,
+      "tokens_per_s": 178.28617299554284,
       "variant": "4 sequences in lock step (one barrier per layer)"
     },
     {
-      "average_power_w": 169.19751443072005,
+      "average_power_w": 169.19751442944846,
       "investigation": "synchronisation",
-      "link_mb_per_token": 4.461909333333341,
-      "speedup": 1.0698270083615773,
-      "tokens_per_joule": 1.1272941196899098,
-      "tokens_per_s": 190.73536308389936,
+      "link_mb_per_token": 4.461909333333347,
+      "speedup": 1.0698270083415824,
+      "tokens_per_joule": 1.127294119701881,
+      "tokens_per_s": 190.7353630844914,
       "variant": "4 independent streams (no barrier)"
     }
   ],
@@ -2578,144 +2579,144 @@
     {
       "fastest": "H",
       "latency_ms": {
-        "A": 5.824024989834748,
-        "E": 7.600432067657575,
-        "F": 4.959239086228592,
-        "H": 4.667251239366378
+        "A": 5.824024989345753,
+        "E": 7.600432067168593,
+        "F": 4.959239085739579,
+        "H": 4.667251238877362
       },
       "metric": "tokens/s",
-      "speedup_vs_a": 1.229052195939398,
+      "speedup_vs_a": 1.2290521959629104,
       "tokens_per_joule": {
-        "A": 1.6110119888879841,
-        "E": 0.8408100428896899,
-        "F": 1.2913058172356606,
-        "H": 1.3445616750127942
+        "A": 1.611011989002206,
+        "E": 0.840810042939221,
+        "F": 1.2913058173524938,
+        "H": 1.344561675139464
       },
       "tokens_per_s": {
-        "A": 170.75741673680892,
-        "E": 131.57146739793126,
-        "F": 199.6944697002179,
-        "H": 209.86977801331392
+        "A": 170.75741675106707,
+        "E": 131.57146740639607,
+        "F": 199.6944697197188,
+        "H": 209.86977803485286
       },
       "workload": "single-user decoding"
     },
     {
       "fastest": "H",
       "latency_ms": {
-        "A": 13.147821945694055,
-        "E": 19.866965577963164,
-        "F": 9.073431615438272,
-        "H": 8.629313035879477
+        "A": 13.147821945205038,
+        "E": 19.86696557747419,
+        "F": 9.073431614949211,
+        "H": 8.62931303539041
       },
       "metric": "aggregate tokens/s",
-      "speedup_vs_a": 1.518382342280616,
+      "speedup_vs_a": 1.5183823423097809,
       "tokens_per_joule": {
-        "A": 2.490891817568666,
-        "E": 1.2388990558623894,
-        "F": 2.4750753840478636,
-        "H": 2.531762016168031
+        "A": 2.490891817636935,
+        "E": 1.2388990558892736,
+        "F": 2.4750753841551814,
+        "H": 2.5317620162803203
       },
       "tokens_per_s": {
-        "A": 303.0007886710173,
-        "E": 201.33925255484814,
-        "F": 440.1564025343222,
-        "H": 460.07104721517317
+        "A": 303.0007886822416,
+        "E": 201.33925255980358,
+        "F": 440.1564025580099,
+        "H": 460.0710472410529
       },
       "workload": "batched inference (4 sequences in lock step)"
     },
     {
       "fastest": "H",
       "latency_ms": {
-        "A": 14.610561909894683,
-        "E": 20.293517459925894,
-        "F": 11.789029738516593,
-        "H": 11.635132638792884
+        "A": 14.610561908006826,
+        "E": 20.2935174599157,
+        "F": 11.789029736561698,
+        "H": 11.635132636826954
       },
       "metric": "aggregate tokens/s",
-      "speedup_vs_a": 1.2403203877304125,
+      "speedup_vs_a": 1.2403203877859081,
       "tokens_per_joule": {
-        "A": 2.120457554183306,
-        "E": 1.1558813047379863,
-        "F": 1.866014810501843,
-        "H": 1.8722470582739537
+        "A": 2.1204575543669355,
+        "E": 1.1558813047482293,
+        "F": 1.8660148107481402,
+        "H": 1.8722470585216464
       },
       "tokens_per_s": {
-        "A": 273.3703980925475,
-        "E": 197.10727861243856,
-        "F": 337.1349671473188,
-        "H": 339.0668781561657
+        "A": 273.37039812607685,
+        "E": 197.10727861253756,
+        "F": 337.13496720351435,
+        "H": 339.0668782129237
       },
       "workload": "concurrent requests (4 independent streams)"
     },
     {
       "fastest": "H",
       "latency_ms": {
-        "A": 13.162574377178716,
-        "E": 13.6402298276577,
-        "F": 11.552421761752539,
-        "H": 11.074509233761889
+        "A": 13.162574376689665,
+        "E": 13.640229827168694,
+        "F": 11.552421761263476,
+        "H": 11.074509233272819
       },
       "metric": "tokens/s",
-      "speedup_vs_a": 1.189516025503335,
+      "speedup_vs_a": 1.1895160255116493,
       "tokens_per_joule": {
-        "A": 0.6687574203386669,
-        "E": 0.44724610688886046,
-        "F": 0.523885223459247,
-        "H": 0.5414180037641152
+        "A": 0.668757420358352,
+        "E": 0.44724610690287564,
+        "F": 0.523885223478479,
+        "H": 0.5414180037846563
       },
       "tokens_per_s": {
-        "A": 75.39479283219715,
-        "E": 73.31254770886217,
-        "F": 86.00115894679115,
-        "H": 89.68331431340249
+        "A": 75.39479283497711,
+        "E": 73.31254771149044,
+        "F": 86.00115895040837,
+        "H": 89.68331431733614
       },
       "workload": "long-context attention (32k context)"
     },
     {
       "fastest": "H",
       "latency_ms": {
-        "A": 103.64517219709826,
-        "E": 249.44878904367357,
-        "F": 51.371621718465036,
-        "H": 49.258822650533396
+        "A": 102.00377720189826,
+        "E": 247.80739404847358,
+        "F": 49.730226723265034,
+        "H": 47.617427655333394
       },
       "metric": "prompt tokens/s",
-      "speedup_vs_a": 2.1040935739046933,
+      "speedup_vs_a": 2.123771341833097,
       "tokens_per_joule": {
-        "A": 6.528059049094524,
-        "E": 3.426186101013249,
-        "F": 9.541006913356108,
-        "H": 9.72967629986202
+        "A": 6.767182205255412,
+        "E": 3.501477411242506,
+        "F": 10.12062460675584,
+        "H": 10.302881267779279
       },
       "tokens_per_s": {
-        "A": 1234.9827520821427,
-        "E": 513.1313745427311,
-        "F": 2491.648028973779,
-        "H": 2598.5192725391694
+        "A": 1251.0904029870042,
+        "E": 516.5301886632242,
+        "F": 2559.845636074535,
+        "H": 2657.02994390622
       },
       "workload": "prefill (128-token prompt)"
     },
     {
       "fastest": "H",
       "latency_ms": {
-        "A": 5.741371760928689,
-        "E": 7.605543875655477,
-        "F": 4.886861804369456,
-        "H": 4.608641042360564
+        "A": 5.7413717604396854,
+        "E": 7.6055438751664655,
+        "F": 4.886861803880458,
+        "H": 4.608641041871566
       },
       "metric": "tokens/s",
-      "speedup_vs_a": 1.2446616121531817,
+      "speedup_vs_a": 1.2446616121790863,
       "tokens_per_joule": {
-        "A": 1.6269192544399762,
-        "E": 0.8401843007179727,
-        "F": 1.315325766973258,
-        "H": 1.3789419765488868
+        "A": 1.6269192545564717,
+        "E": 0.840184300767433,
+        "F": 1.3153257670944773,
+        "H": 1.3789419766821163
       },
       "tokens_per_s": {
-        "A": 173.97365307117474,
-        "E": 131.48303610487235,
-        "F": 204.27511899719352,
-        "H": 216.5383275037467
+        "A": 173.9736530859754,
+        "E": 131.4830361133263,
+        "F": 204.2751190175986,
+        "H": 216.53832752667523
       },
       "workload": "sustained decoding (48 tokens)"
     }

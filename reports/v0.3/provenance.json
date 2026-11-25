@@ -1,5 +1,6 @@
 {
   "configs": {
+    "colab_t4": "e389a091737465829bcac1dc8f9227830da17dadd81aebe6ef37577e905b2e58",
     "design_estimates": "85aa9e05c90c67daffc8e3f5c7dfe7e7c1a8537d2ad800c59f58e14fec8b2824",
     "desktop_gpu12": "9268e00f25425e33edf0ab30b45fef35858163d7f6e098facdbceb303c3bfd49",
     "hardware_gate": "a82930ab81a4d8510c9a5dfae5fac48cce5fef6370113ca35f33f514ef9056f7",
@@ -13,15 +14,15 @@
     "python": "3.13.18"
   },
   "git": {
-    "commit": "dd8b10e48ace1aa99c337fbb27be970aaa9bd16d",
+    "commit": "78f8903feb5732025860c26a9d71d1bb5d309ac4",
     "dirty": true
   },
   "inputs": {
     "compression": null,
-    "dse": "067c1696718ded075b57a0229a9226574622d3572365dd61a957de69dc50d287",
+    "dse": "227d5a916be4bf8ee0fd6ab6f4d9d78cfffd992b3764ceeed2f9516426560efd",
     "measurements": null,
     "trace": null
   },
   "parameters": "d7e28496c853d443639deddcf5971157e6779d428851115a9d2a18063a80d95e",
-  "source": "5ad1abfadc88c88df0ea1881e35f06aaa532aad096e6dd95311069ecb2059ea9"
+  "source": "12793a2bda679d1c143d060d9d48f58126affe0217540181755c0da330eba20e"
 }
