@@ -4,10 +4,11 @@ The objective is no longer to validate the architecture originally proposed. It 
 engineering system that can discover which architecture is best — and to accept the answer,
 including "a conventional CPU/GPU configuration is superior".
 
-The v0.1 simulation missed the 2x throughput, 2x energy and 70% scaling targets on its
-illustrative profile. Those results rest on assumed hardware parameters and synthetic routing,
-so the order of work is: measure, fix the model, explore alternatives, and only then decide about
-hardware. **No FPGA development and no hardware purchases until the gate below is passed.**
+The order of work is: make the evidence trustworthy, measure existing machines, execute real
+models, and only then decide about hardware. The objective is faster and more economical
+inference; if conventional GPUs with better scheduling achieve it, BASP succeeds without a chip.
+**No FPGA development and no hardware purchases until the gate below is passed on calibrated
+evidence.**
 
 ## Decisions on record
 
@@ -20,41 +21,66 @@ hardware. **No FPGA development and no hardware purchases until the gate below i
 | FPGA toolchain | Verilator and Yosys for initial RTL verification; vendor tools after board selection |
 | Hardware purchases | Not yet; baseline on existing computers first |
 
-## Phases
+## Releases
 
-| # | Phase | Exit evidence |
+Revised after the v0.2 audit: limited real software execution comes *before* the hardware
+decision, because runtime measurements are what make that decision credible.
+
+| Release | Objective | Exit requirement | State |
+|---|---|---|---|
+| v0.3 | Repair and evidence infrastructure | Trustworthy, reproducible results; missing or stale evidence cannot produce GO | **Done** (below) |
+| v0.4 | Hardware calibration | Held-out prediction error within thresholds on both machines | **Ready to run**: `benchmarks.run_calibration`; nothing measured yet |
+| v0.5 | Real model execution | Tokens from pretrained GGUF models; intermediate tensors and logits verified against a reference; quality parity | Not started (GGUF header reader and backend contract in place) |
+| v0.6 | Native execution backends | CPU (SIMD), CUDA and Metal backends behind the `Payload` contract; compiled C++ scheduler | Not started |
+| v0.7 | Adaptive memory and expert management | Measured improvement over a tuned llama.cpp (incl. `--n-cpu-moe`) on the same machine | Not started |
+| v0.8 | Distributed execution; architecture I | Efficient multi-device scaling, measured; adaptive hierarchical tensor-parallel execution against H and E | Not started |
+| v0.9 | Conditional accelerator RTL | Synthesis and formal verification of a quantised matrix-vector unit | Blocked on the gate |
+| v1.0 | Validated inference product | Reproducible hardware benchmarks | Blocked on the gate |
+
+### Evidence levels
+
+| Level | Meaning |
+|---|---|
+| E0 | Theoretical estimate, argument, or guessed parameter |
+| E1 | Uncalibrated simulation |
+| E2 | Simulation whose model of existing hardware passed held-out validation |
+| E3 | Direct measurement |
+
+Results on existing GPUs are never presented as measurements of hypothetical modules: before a
+prototype exists, module claims are at most E2. Every gate criterion states its required level.
+
+## Release v0.3 — Evidence-Gated Adaptive Execution Foundation
+
+Defects found in the v0.2 audit, each reproduced and covered by a regression test
+(`tests/test_v03_evidence.py`):
+
+| Defect | Consequence | Fix |
 |---|---|---|
-| 0 | Land v0.1, CI | Tests and lint run on every push |
-| 1 | Replace assumptions with measurements | Simulator predicts held-out measured runs within the calibration thresholds |
-| 2 | Fix architectural weaknesses, explore alternatives | Every investigation below has a simulated answer; eight architectures compared in one simulator |
-| 3 | Hardware decision gate | All thresholds met on calibrated evidence in a chosen workload regime |
-| 4 | Real CPU/GPU runtime (v0.8) | Measured tokens/s against a tuned llama.cpp baseline |
-| 5 | RTL (v0.9) | Bit-exact against the reference kernels; formal checks; synthesis results |
-| 6 | FPGA prototype (v1.0) | Hardware results compared with simulator predictions |
+| Calibration report read a `machine` field the scored rows did not have | Report crashed as soon as validation measurements existed | Rows carry machine, model and kind; the report's lookup is a tested function |
+| Gate used architecture E's scaling to qualify architecture H | A candidate could pass on another architecture's evidence | Each criterion is evaluated for one candidate in one regime; borrowed evidence is "not evaluated" |
+| Module link bandwidth ignored on the local fabric, but priced | The optimiser chose the cheapest links for free: every hierarchical design on the v0.2 front had 8 GB/s links | Each module's fabric port is its link bandwidth (capped by the fabric) |
+| Routing validation accepted NaN coefficients | Invalid traces passed validation | Non-finite coefficients rejected |
+| GPU capacity changed without performance | Larger GPUs were modelled as equally fast | GPU classes (12/16/24/32/48 GiB) scale bandwidth and compute; a 32 GiB RTX 5090-class card joins the conventional candidates |
+| Real routing traces not used by exploration and report | Experiments always used synthetic routing | `--trace` and `--compression` on both; the report states what it used |
+| Apple unified memory double-counted | M2 CPU and GPU each had their own bandwidth and capacity | Memory domains: one shared bus and one capacity pool |
 
-Phases 4-6 start only after phase 3. If the gate fails for every distributed design, phase 4 (a
-better CPU/GPU runtime) is the product and phases 5-6 are shelved.
+Further problems found while fixing those:
 
-### Status after v0.2
+| Problem | Fix |
+|---|---|
+| Price corners inverted for shared components: the "pessimistic" corner priced host and GPU *high*, which favoured modules | Corners are named from the module proposal's side: pessimistic = cheap, fast conventional parts |
+| A prompt was simulated as independent sequences: 512x the KV memory and KV traffic | Prompt rows share one sequence's KV cache; llama-bench's 512-token prompt now simulates |
+| CPU arithmetic rate set for decode only: prompt processing several times too slow, handicapping the baseline | 400 GMAC/s priors (250 on the M2), decode still memory-bound |
+| llama-bench's `n_depth`, `n_cpu_moe` and physical batch were ignored; one failed configuration aborted the whole matrix | Recorded and modelled; failures logged and skipped |
+| transformers 5 routers are not `nn.Linear`: the trace recorder would have found no router | Router modules recognised by weight shape; model-selected experts cross-checked |
+| Fitting re-simulated every measurement for every parameter: about five minutes per fit | Dependencies probed once: about half a minute |
 
-| # | Phase | State |
-|---|---|---|
-| 0 | CI | Done |
-| 1 | Measurements | **Tooling done, nothing measured.** The profiling, benchmark, fitting and validation scripts exist ([calibration.md](calibration.md)); they must be run on the two calibration machines. The hardware-facing parts have never been executed |
-| 2 | Investigations and alternatives | Done in simulation, **on an uncalibrated simulator**: all ten investigations, eight architectures, the model-size and workload suites and the design-space exploration are in `reports/v0.2/report.md`. They must be re-run on the calibrated profile |
-| 3 | Hardware gate | Evaluated: **NO-GO**. Calibration is not evaluated, and at the pessimistic corner no module-based design reaches 2x the conventional baseline in throughput per dollar in any regime examined |
-| 4-6 | Runtime, RTL, FPGA | Not started. No FPGA development and no purchases, by decision |
-
-Next actions, in order:
-
-1. Run the calibration procedure on the i9-11900KF + RTX 3080 Ti, then on the MacBook Pro M2.
-2. If validation fails, fix the simulator's model of a conventional system until it passes on
-   fresh validation measurements.
-3. Record real Qwen3-30B-A3B routing and measure real weight compression; replace the synthetic
-   trace and the assumed ratio.
-4. Re-run the exploration and the report on the calibrated profile and re-evaluate the gate.
-5. Only if the gate passes: select an FPGA board and start RTL with Verilator and Yosys. If it
-   does not, the conventional CPU/GPU runtime (phase 4) is the product.
+New infrastructure: evidence levels and provenance (`basp/evidence.py`: source fingerprint,
+configuration and input hashes, staleness detection; `provenance.json` next to each report); a
+pre-registered calibration plan and one-command runner (`benchmarks/run_calibration.py`); a GGUF
+header reader (`basp/models/gguf.py`: exact bits per weight, shape check, fingerprint; no tensor
+data); the backend contract a real execution backend implements (`basp/backends/base.py`); a
+`CLAUDE.md` with the evidence rules for sessions on the calibration machines.
 
 ## Phase 2 investigations
 
@@ -131,7 +157,7 @@ Rules of evidence:
   hypothetical FPGA module. Every figure for hardware that does not exist is labelled as an
   estimate and carries an uncertainty range; the gate is evaluated at the pessimistic end.
 
-## Release v0.2 — Calibrated Architecture Discovery Engine
+## Release v0.2 — Calibrated Architecture Discovery Engine (historical)
 
 | Item | Where | State |
 |---|---|---|

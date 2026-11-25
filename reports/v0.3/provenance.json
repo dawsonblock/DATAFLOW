@@ -1,0 +1,27 @@
+{
+  "configs": {
+    "design_estimates": "85aa9e05c90c67daffc8e3f5c7dfe7e7c1a8537d2ad800c59f58e14fec8b2824",
+    "desktop_gpu12": "9268e00f25425e33edf0ab30b45fef35858163d7f6e098facdbceb303c3bfd49",
+    "hardware_gate": "a82930ab81a4d8510c9a5dfae5fac48cce5fef6370113ca35f33f514ef9056f7",
+    "i9_11900kf_rtx3080ti": "713d62abdc1c13c98fee15b24b9b219406ec401a1319adfa665238be348aa693",
+    "macbook_m2": "69bd9d9ba908e2fcf737d0ca9bebde7a1d1e392cfa8e5f09968a0eb71ce1313a"
+  },
+  "environment": {
+    "basp": "0.3.0",
+    "numpy": "2.5.3",
+    "platform": "Linux-6.18.44-fc-v880-x86_64-with-glibc2.39",
+    "python": "3.13.18"
+  },
+  "git": {
+    "commit": "dd8b10e48ace1aa99c337fbb27be970aaa9bd16d",
+    "dirty": true
+  },
+  "inputs": {
+    "compression": null,
+    "dse": "067c1696718ded075b57a0229a9226574622d3572365dd61a957de69dc50d287",
+    "measurements": null,
+    "trace": null
+  },
+  "parameters": "d7e28496c853d443639deddcf5971157e6779d428851115a9d2a18063a80d95e",
+  "source": "5ad1abfadc88c88df0ea1881e35f06aaa532aad096e6dd95311069ecb2059ea9"
+}

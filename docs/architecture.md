@@ -1,9 +1,10 @@
-# BASP Dataflow v0.2 — architecture of the implementation
+# BASP Dataflow v0.3 — architecture of the implementation
 
 This document describes what is implemented in this repository and how the pieces map onto the
-BASP Adaptive Dataflow Architecture. The first part covers the dataflow engine (v0.1); the second
-part, from [Architecture discovery](#architecture-discovery-v02), covers what v0.2 adds on top of
-it. For what is *not* implemented, see [limitations.md](limitations.md).
+BASP Adaptive Dataflow Architecture. The first part covers the dataflow engine (v0.1); then
+[Architecture discovery](#architecture-discovery-v02) (v0.2) and
+[Evidence and real inputs](#evidence-and-real-inputs-v03) (v0.3). For what is *not* implemented,
+see [limitations.md](limitations.md).
 
 ## The three levels
 
@@ -202,7 +203,36 @@ All eight reproduce the float64 reference on the small numeric model
   the pessimistic corner; a criterion that cannot be evaluated counts against the decision; and
   evidence is "calibrated" only if validation passed *and* the comparison ran on the validated
   profile.
-* `experiments/report_v2.py` — the deterministic report that ties these together.
+* `experiments/report_v3.py` — the deterministic report that ties these together.
+
+## Evidence and real inputs (v0.3)
+
+    configs/calibration_plan.json ──► benchmarks/run_calibration ──► evidence/<machine>/
+        (pre-registered splits)          llama-bench + GGUF headers      measurements, runs, fit
+                                                                              │
+    configs/<machine>.json ◄── fit on the calibration split ◄────────────────┘
+            │                    score on the validation split ──► gate criterion 1 (E3)
+            ▼
+    base profile of every design ──► comparison (E1, or E2 once validated) ──► gate
+
+* `basp/evidence.py` — evidence levels E0–E3; provenance (fingerprint of the simulator source,
+  hashes of configurations and inputs, environment, git state); `stale_reasons` compares a stored
+  result with the repository. Exploration results carry their provenance; the report writes
+  `provenance.json` beside its deterministic `report.md` and `results.json`.
+* `basp/experiments/gate.py` — a `Candidate` is one architecture in one regime with its ratios and
+  *its own* scaling result. Each criterion has a required evidence level; insufficient evidence
+  can fail a criterion but never pass it.
+* `basp/models/gguf.py` — reads a GGUF file's metadata and tensor index (not its data): exact bits
+  per weight, the model shape it implies (checked against the simulator's), a header fingerprint.
+* `basp/experiments/variants.py` — the experiment `Context`: base profile, recorded routing trace,
+  measured compression; every experiment and the exploration use it.
+* `basp/backends/base.py` — the `Payload` contract between the runtime (when and where) and a
+  backend that computes values (what). `NumericPayload` implements it; a GGML, CUDA or Metal
+  backend will.
+* Memory domains (`DeviceSpec.memory_domain`) — devices sharing one memory system (Apple unified
+  memory) share one bandwidth resource and one allocation pool.
+* Prompt programs (`ModelProgram(prompt=True)`) — the rows of a batch are one prompt sharing one KV
+  cache, as llama-bench's prompt-processing test is.
 
 ## Extending
 

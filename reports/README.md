@@ -2,12 +2,14 @@
 
 | Directory | Produced by | Status |
 |---|---|---|
-| `v0.2/` | `python -m benchmarks.explore` (writes `dse.json`), then `python -m benchmarks.run_report` | Current. Simulated on an uncalibrated simulator; see the note at the top of the report |
-| `v0.1/` | the v0.1 code (`python -m benchmarks.run_report --release v0.1` at that commit) | Historical record. The v0.1 model charged one GPU launch per expert, pinned the output projection to the modules and assumed a slower host CPU; its numbers are superseded and cannot be regenerated from the current code |
+| `v0.3/` | `python -m benchmarks.explore` (writes `dse.json`), then `python -m benchmarks.run_report` | Current. Simulated; the header of the report states the calibration status, the routing and the compression data it used. `provenance.json` records the code, configurations, inputs and environment |
+| `v0.2/` | the v0.2 code | Historical record, superseded. Produced before the v0.2 audit fixes: module links on the local fabric were free, price corners favoured modules, the host CPU was modelled too slow for prompts, and the gate borrowed one architecture's scaling for another |
+| `v0.1/` | the v0.1 code | Historical record, superseded. One GPU launch per expert, output projection pinned to the modules, slow host CPU |
 
-Both generators are deterministic. Nothing in either directory is a measurement of real hardware.
+Neither historical report can be regenerated from the current code. Nothing in any directory is a
+measurement of real hardware.
 
-One statement in the v0.1 report does not generalise: it records that fused and unfused graphs
-gave bit-identical logits. That was observed for one model seed under a policy that accumulates
-partial sums on devices, where it holds only by chance. Bit-identity is guaranteed only between
-dataflows that keep the reduction order; see section 8 of the v0.2 report.
+The v0.1 report records that fused and unfused graphs gave bit-identical logits. That was
+observed for one model seed under a policy that accumulates partial sums on devices, where it
+holds only by chance; bit-identity is guaranteed only between dataflows that keep the reduction
+order.

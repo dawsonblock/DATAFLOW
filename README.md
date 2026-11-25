@@ -2,110 +2,97 @@
 
 The dataflow engine of the Block Adaptive Stream Processor (BASP): a bidirectional,
 topology-aware, asynchronous dataflow layer that decides, per operation, whether to move data to
-a processor or to execute where the data already resides — and, since v0.2, an engineering system
-for finding out **which architecture is best**, including "a conventional CPU/GPU system".
+a processor or to execute where the data already resides — and an engineering system for finding
+out, from evidence, **which architecture is best**, including "a conventional CPU/GPU system".
 
-This repository is **v0.2, the Calibrated Architecture Discovery Engine**: a discrete-event
+This repository is **v0.3, the Evidence-Gated Adaptive Execution Foundation**: a discrete-event
 simulator, a cost-based scheduler, a distributed tensor memory model, the BASP Stream Protocol,
 INT4 reference kernels, eight competing dataflow architectures, a multi-objective design-space
-explorer, calibration tooling and an evidence-gated hardware decision. It is a Python research
-prototype that runs on a laptop and needs only NumPy.
+explorer, a pre-registered calibration plan with a one-command runner, evidence levels and
+provenance for every result, and an evidence-gated hardware decision. It is a Python research
+prototype that needs only NumPy.
 
 > **Status of the numbers.** Nothing here has been measured on hardware. Every performance figure
-> is the output of a simulator that has not been validated against measurements; the host and GPU
-> come from an illustrative profile, everything about compute-memory modules is an estimate with a
-> pessimistic–nominal–optimistic range, and routing is synthetic. "Calibrated" describes what the
-> system can do once measurements exist, not its current state. See
-> [docs/limitations.md](docs/limitations.md).
+> is an uncalibrated simulation (evidence level E1): the host and GPU come from an illustrative
+> profile, everything about compute-memory modules is an estimate with a pessimistic–nominal–
+> optimistic range, and routing is synthetic. See [docs/limitations.md](docs/limitations.md).
 
 ## Where things stand
 
-**Hardware development: NO-GO.** No FPGA or RTL work has been started, by decision
-([docs/roadmap.md](docs/roadmap.md)). The gate requires every criterion to pass on calibrated
-evidence at the pessimistic end of every estimate; today the simulator is uncalibrated, and even
-taking its numbers at face value no module-based design reaches the thresholds.
+**Hardware development: NO-GO**, and the simulation no longer leaves much doubt about the
+direction. No FPGA or RTL work has been started, by decision ([docs/roadmap.md](docs/roadmap.md)).
 
-Full report: [reports/v0.2/report.md](reports/v0.2/report.md)
-(machine-readable: [results.json](reports/v0.2/results.json),
-[dse.json](reports/v0.2/dse.json)). First workload: Qwen3-30B-A3B shapes at 4.5 bits per weight
-(16.0 GiB), single-user decoding, 12 GiB GPU.
+Full report: [reports/v0.3/report.md](reports/v0.3/report.md) (machine-readable:
+[results.json](reports/v0.3/results.json), [dse.json](reports/v0.3/dse.json); inputs and
+environment: [provenance.json](reports/v0.3/provenance.json)). First workload: Qwen3-30B-A3B
+shapes at 4.5 bits per weight (16.0 GiB), single-user decoding, 12 GiB GPU.
 
-| Architecture | tokens/s (range over estimates) | vs A, nominal / pessimistic | per dollar vs A |
+| Architecture | tokens/s (range over estimates) | vs A, nominal / pessimistic | per dollar vs A, nominal / pessimistic |
 |---|---|---|---|
-| A Centralized (conventional CPU/GPU) | 164 | 1.00x | 1.00x |
-| B Distributed (modules only) | 46 (38–59) | 0.28x / 0.23x | 0.06x / 0.03x |
-| C Pipeline | 28 (23–35) | 0.17x / 0.14x | 0.04x / 0.02x |
-| D Expert-local | 107 (90–126) | 0.65x / 0.55x | 0.13x / 0.06x |
-| E Tensor-parallel | 132 (111–153) | 0.80x / 0.68x | 0.16x / 0.08x |
-| F Adaptive hybrid | 200 (182–214) | 1.22x / 1.11x | 0.24x / 0.13x |
-| G Spatial dataflow | 110 (93–130) | 0.67x / 0.57x | 0.13x / 0.06x |
-| H Hierarchical | 218 (200–244) | 1.33x / 1.22x | 0.28x / 0.14x |
+| A Centralized (conventional CPU/GPU) | 171 | 1.00x | 1.00x |
+| B Distributed | 46 (38–59) | 0.27x / 0.22x | 0.06x / 0.01x |
+| C Pipeline | 28 (23–35) | 0.16x / 0.14x | 0.03x / 0.01x |
+| D Expert-local | 107 (90–126) | 0.62x / 0.53x | 0.12x / 0.03x |
+| E Tensor-parallel | 132 (111–153) | 0.77x / 0.65x | 0.15x / 0.04x |
+| F Adaptive hybrid | 200 (182–214) | 1.17x / 1.07x | 0.23x / 0.07x |
+| G Spatial dataflow | 110 (93–130) | 0.64x / 0.55x | 0.12x / 0.03x |
+| H Hierarchical | 210 (197–235) | 1.23x / 1.15x | 0.26x / 0.07x |
 
 What the simulation says, under its assumptions:
 
-* **The conventional system wins on cost.** The fastest module-based design is 1.33x architecture A
-  on the first workload, at roughly five times the estimated price: about a quarter of the
-  throughput per dollar. Prices are guesses for ratio purposes; the conclusion survives the whole
-  estimate range.
-* **Design-space exploration agrees.** Of 1,980 simulated systems (from 8,030 feasible), the
-  Pareto front holds two conventional systems and seven hierarchical hybrids; no other
-  architecture is on it. Within 2,000 and 5,000 USD budgets the best system is conventional. The
-  fastest design found is 1.29x the fastest conventional one at 5.0x the price (1.09x at 9.6x
-  with pessimistic estimates).
-* **Modules add nothing while a model fits on the GPU**, and gain as it outgrows it: 1.3x for the
-  30B MoE, 3.8x for a 70B dense model, 3.1x for DeepSeek-V3 shapes. Per estimated dollar no
-  published model shape exceeds 0.8x the conventional system.
-* **The 47% scaling efficiency of v0.1 was expert imbalance, not a limit of distribution.** From
-  one to four modules: whole experts 50%, two copies of each expert 58%, experts partitioned
-  across all modules 72%. The serial trunk caps the ideal at 78% for four modules and 60% for
-  eight.
-* **Most "obvious" fixes are worth little here.** Removing host round trips: +0.9%. Streaming
-  activations before routing is known: +0.9%. Independent memory-channel engines: −22%.
-  Graph-level schedule refinement: no improvement at 7.8x the search effort. Power gating: no
-  effect on single-user decoding.
-* **Two corrections moved the baseline up.** Batching GPU kernel launches (+11%) and a CPU
-  arithmetic rate consistent with memory-bound decoding. v0.1 understated the conventional system
-  on both counts.
-* **Prefill is the workload where hybrids help most** (3.0x prompt tokens/s); other workload
-  types range from 1.2x to 1.5x.
-* **Numerics hold within tolerance.** All eight architectures reproduce a float64 reference on a
-  small random-weight model (relative error 4.5e-4, identical routing and tokens). Dataflows that
-  keep the reduction order are bit-identical; those that accumulate partial sums on devices or
-  partition experts add in a different FP32 order and agree within rounding only. Real model
-  weights have not been run.
+* **A bigger GPU beats every module design for this model.** The 16 GiB model fits a 32 GiB
+  (RTX 5090-class) GPU: 438 tokens/s for an estimated $3,600. That is faster than any of the 1,980
+  systems explored and cheaper than every module design. The Pareto front (speed, tokens per
+  joule, price) is entirely conventional: 12, 24 and 32 GiB GPUs.
+* **With the 12 GiB GPU, the best module design is 1.23x faster at about five times the price.**
+  That is a quarter of the throughput per dollar at nominal estimates, and 7% at the pessimistic
+  corner.
+* **Modules help only when the model is far larger than the GPU, and never per dollar.** With a
+  12 GiB GPU: 3.2x for a 70B dense model and 3.0x for DeepSeek-V3 shapes, at 0.64x and 0.76x the
+  throughput per dollar. The gate's most favourable regime (70B, pessimistic estimates) gives 2.7x
+  throughput and 1.3x energy efficiency, but only 0.17x per dollar.
+* **Each candidate is judged on its own scaling now.** From one to four modules H scales at 32%
+  (its GPU does most of the work), E on the 70B model at 93%.
+* **Two v0.2 results were artefacts.** Module links on the local fabric were free, so the v0.2
+  front's hierarchical designs all used the cheapest link. The pessimistic price corner also
+  favoured modules. Both are fixed, and H dropped off the front.
+* **Numerics hold within tolerance** on a small random-weight model (relative error 4.5e-4,
+  identical routing and tokens). Dataflows that keep the reduction order are bit-identical; those
+  that reorder FP32 sums agree within rounding. Real model weights have not been run.
 
 ## What you need to run
 
-The simulator's verdict means little until it is calibrated. The procedure for the two chosen
-machines (Intel i9-11900KF + RTX 3080 Ti, MacBook Pro M2) is in
-[docs/calibration.md](docs/calibration.md):
+The verdict means little until the simulator is calibrated. Each machine needs one command (and
+Claude Code started in the repository picks up the rules in [CLAUDE.md](CLAUDE.md)):
 
 ```bash
-python -m benchmarks.profile_hardware --machine i9-11900kf-3080ti ...   # memory, GPU link, roofline
-python -m benchmarks.run_llama_bench --split calibration ...            # benchmarks used for tuning
-python -m benchmarks.run_llama_bench --split validation ...             # benchmarks used for judging
-python -m benchmarks.calibrate measurements.json --machine i9-11900kf-3080ti \
-    --profile-out configs/i9_11900kf_rtx3080ti.json                     # fit, then validate
-python -m benchmarks.record_routing_trace ...                           # real expert routing
-python -m benchmarks.explore --base-profile i9_11900kf_rtx3080ti        # rerun on the calibrated machine
-python -m benchmarks.run_report --base-profile i9_11900kf_rtx3080ti
+python -m benchmarks.run_calibration --machine i9-11900kf-3080ti \
+    --models-dir ~/models --llama-bench ~/llama.cpp/build/bin/llama-bench
+python -m benchmarks.run_calibration --machine macbook-m2 \
+    --models-dir ~/models --llama-bench ~/llama.cpp/build/bin/llama-bench
 ```
 
-Calibration and validation measurements are separate sets, declared when recorded; only the
-validation split decides whether the simulator is trusted (median error at most 10%, 95th
-percentile at most 20%). The scripts that touch real hardware were written without access to a
-GPU, llama.cpp or model files and **have never been executed**; expect small fixes on first use.
+It runs the pre-registered plan (`configs/calibration_plan.json`: 8 calibration and 28 validation
+measurements on the desktop, 8 and 14 on the MacBook), checks every GGUF file against the
+simulator's model shape, keeps going when a configuration does not fit GPU memory, fits the
+machine profile on the calibration split only and judges it on the validation split. Results go
+to `evidence/<machine>/`; commit that folder. Details, prerequisites and what to do on a failed
+validation: [docs/calibration.md](docs/calibration.md).
+
+The tools that touch real hardware have never run on it. Their input formats were checked
+against the llama.cpp, gguf and transformers sources, and the whole runner was exercised against
+a fake llama-bench. Expect small fixes on first use.
 
 ## Quick start
 
 ```bash
 pip install -e ".[dev]"                          # or just: pip install numpy pytest
-python -m pytest -q                              # regression suite, about two minutes
+python -m pytest -q                              # regression suite, about four minutes
 python -m benchmarks.dataflow_model              # closed-form comparison of specification section 6
 python -m benchmarks.explore --budget 60 --workers 4 --out /tmp/dse.json   # a small exploration
 python -m benchmarks.run_report --quick          # every experiment, short runs, a few minutes
-python -m benchmarks.explore --budget 2000 --workers 4                     # full exploration (~15 min)
-python -m benchmarks.run_report                  # the full report -> reports/v0.2/ (~10 min)
+python -m benchmarks.explore --budget 2000 --workers 4                     # full exploration (~25 min)
+python -m benchmarks.run_report                  # the full report -> reports/v0.3/ (~15 min)
 ```
 
 Both the exploration and the report are deterministic: on the same Python and NumPy versions
@@ -153,26 +140,21 @@ print(result.plan.choice.mode.name, "on device", result.plan.devices)
 print(f"estimated {result.estimate_s * 1e6:.1f} us, simulated {result.actual_s * 1e6:.1f} us")
 ```
 
-## What v0.2 adds
+## What v0.3 adds
 
-| Release item | Implementation | Evidence |
+| Item | Where | Evidence |
 |---|---|---|
-| CI and regression testing | `.github/workflows/ci.yml` | lint, tests on Python 3.10 and 3.13, exploration and report smoke runs |
-| Hardware profiling and calibration | `benchmarks/profile_hardware.py`, `run_llama_bench.py`, `calibrate.py`, `basp/calibration/` | fitting recovers a synthetic machine; the fit provably ignores the validation split; **not run on real hardware** |
-| Real MoE routing trace recorder | `benchmarks/record_routing_trace.py` | collection logic tested on stand-in modules; **not run on a model** |
-| Corrected GPU batching and output placement | `simulator/compute.py`, `scheduler/placement.py` | closed-form launch-cost tests; report sections 4.5 and 4.8 |
-| Critical-path and scaling analysis | `basp/analysis/` | components sum to the token time exactly; report sections 4.1–4.3 |
-| Eight competing architectures | `experiments/architectures.py` | each runs the same workload and matches the numeric reference |
-| Multi-objective optimisation | `basp/dse/`, `experiments/explore.py` | exhaustive search returns the true Pareto front; two full runs reproduced bit for bit |
-| Equal-cost and equal-power comparisons | report section 7 | estimated price model with ranges |
-| Numerical verification | `basp/verification/`, `backends/cpu/` | report section 8 |
-| Reproducible reports | `benchmarks/run_report.py` | deterministic; commentary is derived from the results |
-| Evidence-gated hardware decision | `experiments/gate.py`, `configs/hardware_gate.json` | report section 1; missing evidence counts against |
+| Regression fix for every defect of the v0.2 audit | see [docs/roadmap.md](docs/roadmap.md) | `tests/test_v03_evidence.py` reproduces each one |
+| Evidence levels E0–E3 and provenance | `basp/evidence.py`, `provenance.json` | stale explorations are detected and excluded from conclusions |
+| Candidate-specific, evidence-levelled gate | `basp/experiments/gate.py` | insufficient evidence can fail a criterion, never pass it |
+| Pre-registered calibration plan, one-command runner | `configs/calibration_plan.json`, `benchmarks/run_calibration.py` | end to end against a fake llama-bench: resumes, records failures, the fit recovers a hidden machine's parameters |
+| GGUF header reader | `basp/models/gguf.py` | agrees with the reference `gguf` package; llama.cpp-style Qwen3 tensor layouts match the simulator's parameter counts to 0.2% |
+| Real routing and measured compression in every experiment | `--trace`, `--compression` on `benchmarks.explore` and `benchmarks.run_report` | the report states which data it used |
+| Unified memory, prompt processing, GPU classes | `DeviceSpec.memory_domain`, `ModelProgram(prompt=True)`, `configs/design_estimates.json` | tests in `tests/test_v03_evidence.py` |
+| Backend contract for real execution | `basp/backends/base.py` | `NumericPayload` implements it |
 
-The v0.1 engine underneath (dataflow IR, discrete-event simulator, device and interconnect
-models, tensor residency, the seven execution modes, the cost-based scheduler, INT4 kernels,
-expert caching, prefetching) is described in [docs/architecture.md](docs/architecture.md), which
-also covers how the v0.2 pieces fit together.
+The engine underneath (v0.1) and the architecture-discovery layer (v0.2) are described in
+[docs/architecture.md](docs/architecture.md).
 
 ## Repository layout
 
@@ -193,11 +175,14 @@ basp/
   dse/          design spaces, Pareto utilities, exhaustive / evolutionary / Bayesian search,
                 parametric hardware designs with cost and estimate corners
   calibration/  measurement store with enforced calibration/validation split, fits, validation
+  models/       GGUF headers: shapes, exact sizes, fingerprints (no tensor data)
+  evidence.py   evidence levels and provenance
   experiments/  architectures, investigations, suites, exploration, calibration glue, gate, reports
 benchmarks/     command-line entry points (report, exploration, profiling, calibration, traces)
 configs/        hardware profiles, design estimates and gate thresholds (assumptions, labelled)
-reports/v0.2/   the generated report, its results and the exploration data
-reports/v0.1/   the v0.1 report, kept as a record (produced by the v0.1 model; superseded)
+reports/v0.3/   the generated report, its results, provenance and the exploration data
+reports/v0.1/, reports/v0.2/   earlier reports, kept as records (superseded)
+evidence/       measurements from the calibration machines (created by run_calibration)
 tests/          regression suite
 docs/           architecture, calibration, limitations, roadmap
 ```
@@ -207,14 +192,16 @@ not exist: nothing below the simulator is built until the hardware gate passes.
 
 ## Milestones
 
-| Stage | Scope | State |
+| Release | Objective | State |
 |---|---|---|
-| Dataflow engine | simulator, execution graph, scheduler, tensor memory, INT4 kernels, MoE execution, prefetching | Implemented and tested in simulation; no real model weights |
-| Architecture discovery (this release) | eight architectures, investigations, design-space exploration, gate | Implemented; conclusions are uncalibrated |
-| Calibration | measured profiles for the two machines, real routing traces | **Tooling ready; measurements not taken** |
-| Hardware decision | all gate criteria on calibrated evidence | **NO-GO** today |
-| CPU/GPU runtime | real execution against a tuned llama.cpp baseline | Not started |
-| RTL, FPGA prototype | Verilator/Yosys first, vendor tools after board selection | Not started; blocked on the gate |
+| v0.1–v0.2 | Dataflow engine; architecture discovery | Done, simulated |
+| v0.3 | Repair and evidence infrastructure | **Done** (this release) |
+| v0.4 | Hardware calibration on the two machines | **Ready to run**; nothing measured |
+| v0.5 | Real GGUF model execution, verified against a reference | Not started |
+| v0.6 | Native CPU, CUDA and Metal backends | Not started |
+| v0.7 | Adaptive expert placement, measured against llama.cpp | Not started |
+| v0.8 | Distributed execution; architecture I | Not started |
+| v0.9–v1.0 | Accelerator RTL, FPGA prototype | Blocked on the gate |
 
 ## License
 
