@@ -1,0 +1,75 @@
+{
+ "name": "colab_t4",
+ "_note": "UNCALIBRATED PRIOR for a Google Colab T4 runtime (the free tier's GPU), built from public specifications and assumptions, not measurements. Colab hands out different hosts; the calibration notebook micro-profiles the one it gets (memory bandwidth, PCIe, GPU roofline) before the plan runs, and the fit adjusts the rest. This machine is a third calibration target for testing the tooling and the simulator's model of a discrete GPU; it says nothing about the i9-11900KF or the M2.",
+ "host": "host",
+ "sync_latency_s": 2e-06,
+ "devices": [
+  {
+   "name": "host",
+   "kind": "CPU",
+   "mem_capacity": 13600000000,
+   "mem_bandwidth": 12000000000.0,
+   "compute_rate": 40000000000.0,
+   "kernel_startup_s": 5e-07,
+   "warm_startup_s": 5e-08,
+   "decode_rate": {
+    "INT4": "inf",
+    "INT8": "inf",
+    "ENTROPY": 4000000000.0
+   },
+   "stream_formats": [
+    "INT4",
+    "INT8"
+   ],
+   "expanded_format": "INT4",
+   "stream_ingest": false,
+   "power": {
+    "idle_w": 20.0,
+    "joules_per_mac": 1e-09,
+    "joules_per_mem_byte": 1.5e-10
+   },
+   "_comment": "Colab VM: 2 vCPUs of a shared Intel Xeon (about 2.2 GHz), about 12.7 GB RAM. Assumed 12 GB/s usable memory bandwidth and 40 GMAC/s for llama.cpp's quantised kernels on two vCPUs."
+  },
+  {
+   "name": "gpu",
+   "kind": "GPU",
+   "mem_capacity": 16106127360,
+   "mem_bandwidth": 220000000000.0,
+   "compute_rate": 10000000000000.0,
+   "kernel_startup_s": 5e-06,
+   "warm_startup_s": 2e-07,
+   "decode_rate": {
+    "INT4": "inf",
+    "INT8": "inf",
+    "ENTROPY": 40000000000.0
+   },
+   "stream_formats": [
+    "INT4",
+    "INT8"
+   ],
+   "expanded_format": "INT4",
+   "stream_ingest": true,
+   "power": {
+    "idle_w": 10.0,
+    "joules_per_mac": 4e-12,
+    "joules_per_mem_byte": 5e-11,
+    "sleep_w": 8.0,
+    "gate_after_s": 0.05,
+    "wake_j": 0.5
+   },
+   "_comment": "NVIDIA Tesla T4 (Turing, 16 GB GDDR6, 320 GB/s peak, about 15 GiB usable). Assumed 220 GB/s sustained and 10 TMAC/s for quantised matrix products; 70 W board power."
+  }
+ ],
+ "links": [
+  {
+   "name": "pcie-gpu",
+   "a": "host",
+   "b": "gpu",
+   "bandwidth_ab": 12000000000.0,
+   "bandwidth_ba": 12000000000.0,
+   "latency_s": 8e-06,
+   "dma_queue_depth": 8,
+   "joules_per_byte": 6e-11
+  }
+ ]
+}

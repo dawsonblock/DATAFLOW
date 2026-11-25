@@ -127,6 +127,8 @@ def find_models(plan: dict[str, Any], runs: list[dict[str, Any]], models_dir: Pa
 
 
 def fit_and_score(evidence: Path, machine: str, profile_name: str) -> dict[str, Any]:
+    """Fit on the calibration split, score the validation split; ``profile_name`` is a configs/
+    name or a path (e.g. a prior seeded by ``benchmarks.profile_hardware``)."""
     measurements = MeasurementSet.load(evidence / "measurements.json")
     own = [m for m in measurements if m.machine == machine]
     thresholds = load_json("hardware_gate")
@@ -134,7 +136,7 @@ def fit_and_score(evidence: Path, machine: str, profile_name: str) -> dict[str, 
     limits = {"median_max": thresholds["calibration_median_max"], "p95_max": thresholds["calibration_p95_max"],
               "min_validation": thresholds["min_validation_measurements"]}  # fmt: skip
     before = score(MeasurementSet(own), {machine: Topology.from_dict(prior)}, **limits)
-    summary: dict[str, Any] = {"prior": before.to_json()}
+    summary: dict[str, Any] = {"prior_profile": str(profile_name), "prior": before.to_json()}
     if any(m.split == "calibration" for m in own):
         fit = fit_profile(own, machine, prior)
         after = score(MeasurementSet(own), {machine: Topology.from_dict(fit.profile)}, **limits)
@@ -152,6 +154,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="explicit model file for a plan model (repeatable)")  # fmt: skip
     parser.add_argument("--llama-bench", default="llama-bench", help="path of the llama-bench binary")
     parser.add_argument("--plan", type=Path, default=PLAN)
+    parser.add_argument("--prior", help="profile to start the fit from: a configs/ name or a path (default: the "
+                                        "plan's profile; e.g. one seeded by benchmarks.profile_hardware)")
     parser.add_argument("--evidence", type=Path, help="output directory (default: evidence/<machine>)")
     parser.add_argument("--timeout", type=float, default=3600.0, help="seconds per llama-bench run")
     parser.add_argument("--update-profile", action="store_true",
@@ -163,7 +167,7 @@ def main(argv: list[str] | None = None) -> int:
 
     plan = json.loads(args.plan.read_text())
     runs = plan_runs(plan, args.machine)
-    profile_name = plan["machines"][args.machine]["profile"]
+    profile_name = args.prior or plan["machines"][args.machine]["profile"]
     evidence = args.evidence or REPO_DIR / "evidence" / args.machine
     n_cal = sum(r["split"] == "calibration" for r in runs)
     print(f"plan v{plan['version']} ({sha256_file(args.plan)[:12]}): {len(runs)} configurations for "
@@ -210,7 +214,10 @@ def main(argv: list[str] | None = None) -> int:
     for reason in verdict.get("reasons", []):
         print(f"  {reason}")
     if args.update_profile and "fitted" in summary:
-        target_profile = REPO_DIR / "configs" / f"{profile_name}.json"
+        if verdict["status"] != "pass":
+            raise SystemExit("validation did not pass: the fitted profile is not written to configs/ "
+                             "(it is in the evidence folder for diagnosis)")
+        target_profile = REPO_DIR / "configs" / f"{plan['machines'][args.machine]['profile']}.json"
         shutil.copyfile(evidence / "profile_fitted.json", target_profile)
         print(f"updated {target_profile.relative_to(REPO_DIR)}")
     print(f"wrote {evidence.relative_to(REPO_DIR) if evidence.is_relative_to(REPO_DIR) else evidence}/; commit it")

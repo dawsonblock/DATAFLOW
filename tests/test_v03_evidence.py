@@ -581,3 +581,92 @@ def test_the_numeric_payload_implements_the_backend_contract():
 
     assert all(callable(getattr(NumericPayload, name)) for name in ("begin_step", "route", "execute", "end_step"))
     assert issubclass(NumericPayload, Payload)
+
+
+# -- the real model files ---------------------------------------------------------------------------------------
+REAL = json.loads((CONFIG_DIR.parent / "tests" / "fixtures" / "qwen3_gguf_headers.json").read_text())["files"]
+
+
+@pytest.mark.parametrize("key", sorted(REAL))
+def test_simulator_shapes_equal_the_real_gguf_files(key):
+    """Parameter counts of the real Q4_K_M files on Hugging Face, read from their headers."""
+    real, spec = REAL[key], MODELS[key]
+    assert spec.total_params == real["parameters"]  # exactly: every tensor of the file is accounted for
+    meta = {k.split(".", 1)[1]: v for k, v in real["metadata"].items()}
+    assert (meta["embedding_length"], meta["block_count"]) == (spec.hidden, spec.n_layers)
+    assert (meta["attention.head_count"], meta["attention.head_count_kv"]) == (spec.n_heads, spec.n_kv_heads)
+    assert meta.get("expert_count", 1) == spec.n_experts and meta.get("expert_used_count", 1) == spec.top_k
+    # the layout the synthetic-file tests use has the same parameter count as the real file
+    assert sum(math.prod(shape) for _, shape, _ in qwen3_tensors(spec)) == real["parameters"]
+    assert 4.85 < real["bits_per_weight"] < 4.96 and real["file"] == f"{spec.name}-Q4_K_M.gguf"
+
+
+def test_plan_names_the_real_files_and_every_configuration_can_be_simulated():
+    """A configuration the simulator cannot place would make a machine's validation 'not evaluated'."""
+    from benchmarks import run_calibration
+
+    plan = json.loads((CONFIG_DIR / "calibration_plan.json").read_text())
+    for key, info in plan["models"].items():
+        assert info["file"] == REAL[key]["file"] and info["repository"] == REAL[key]["repository"]
+    for machine, section in plan["machines"].items():
+        load_topology(section["profile"])
+        for run in run_calibration.plan_runs(plan, machine):
+            bits = REAL[run["model"]]["bits_per_weight"]
+            for kind, batch, ctx in (("prefill", 512, run["depth"]), ("decode", 1, run["depth"] + 64)):
+                m = Measurement(id="x", machine=machine, split=run["split"], kind=kind, model=run["model"],
+                                tokens_per_s=1.0, bits_per_weight=bits, n_gpu_layers=run["ngl"],
+                                n_cpu_moe=run["n_cpu_moe"], batch=batch, context_len=ctx)  # fmt: skip
+                assert predict(m, {machine: section["profile"]}, tokens=1, warmup_tokens=0) is not None, (machine, run, kind)
+
+
+def test_a_prompt_computes_only_the_last_tokens_logits():
+    from basp.core.graph import Graph
+    from basp.experiments.harness import build
+    from basp.scheduler import placement
+
+    topology = load_topology("macbook_m2")
+    spec = MODELS["qwen3-4b"]
+    policy = ExecutionPolicy("s", frozenset({DataflowMode.WEIGHT_STATIONARY}), frozenset({0, 1}), joint_rounds=0)
+    sizes = {}
+    for prompt in (False, True):
+        setup = build(topology, spec, policy, lambda p, r: placement.place_static_split(p, r, 1, 0, 18),
+                      batch=64, context_len=0, max_new_tokens=1, prompt=prompt)  # fmt: skip
+        graph = Graph()
+        head = setup.program.lm_head(graph, 0, setup.program.input_tensor(graph, 0)).ops[0]
+        sizes[prompt] = (head.batch, head.macs)
+    assert sizes[True] == (1, spec.head_params) and sizes[False] == (64, 64 * spec.head_params)
+
+
+def test_update_profile_refuses_a_profile_that_failed_validation(tmp_path, monkeypatch):
+    from benchmarks import run_calibration
+
+    failing = {"prior": {"status": "fail", "validation": {"n": 9, "median": 0.3, "p95": 0.5}, "reasons": ["bad"]},
+               "fitted": {"status": "fail", "validation": {"n": 9, "median": 0.3, "p95": 0.5}, "reasons": ["bad"]}}
+    seen = {}
+    monkeypatch.setattr(run_calibration, "fit_and_score",
+                        lambda evidence, machine, profile: seen.update(profile=profile) or failing)
+    prior = tmp_path / "seeded.json"
+    prior.write_text(json.dumps(load_json("colab_t4")))
+    argv = ["--machine", "colab-t4", "--fit-only", "--update-profile", "--evidence", str(tmp_path), "--prior", str(prior)]
+    with pytest.raises(SystemExit, match="validation did not pass"):
+        run_calibration.main(argv)
+    assert seen["profile"] == str(prior)  # the fit starts from the micro-profiled prior
+    assert load_json("colab_t4")["name"] == "colab_t4"  # the configs/ profile is untouched
+
+
+def test_the_colab_notebook_runs_the_plans_colab_machine():
+    from benchmarks import run_calibration
+
+    nb = json.loads((CONFIG_DIR.parent / "notebooks" / "calibrate_colab.ipynb").read_text())
+    assert nb["nbformat"] == 4 and nb["metadata"]["colab"]["gpuType"] == "T4"
+    text = "\n".join("".join(c["source"]) for c in nb["cells"])
+    plan = json.loads((CONFIG_DIR / "calibration_plan.json").read_text())
+    runs = run_calibration.plan_runs(plan, "colab-t4")
+    n_cal = sum(r["split"] == "calibration" for r in runs)
+    assert f"{len(runs)} configurations ({n_cal} calibration, {len(runs) - n_cal} validation)" in text
+    assert "--machine colab-t4" in text and "--prior {EVIDENCE}/profile_prior.json" in text
+    for key in plan["machines"]["colab-t4"]["profile"], "colab_t4":
+        load_topology(key)
+    sizes = {REAL[run["model"]]["file"].split("-")[1] for run in runs}  # "4B", "8B", "14B"
+    assert all(f"'{size}'" in text for size in sizes)  # the notebook downloads every model the plan uses
+    assert "PUSH = False" in text  # nothing leaves the runtime unless the user says so

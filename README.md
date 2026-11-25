@@ -79,9 +79,14 @@ machine profile on the calibration split only and judges it on the validation sp
 to `evidence/<machine>/`; commit that folder. Details, prerequisites and what to do on a failed
 validation: [docs/calibration.md](docs/calibration.md).
 
-The tools that touch real hardware have never run on it. Their input formats were checked
-against the llama.cpp, gguf and transformers sources, and the whole runner was exercised against
-a fake llama-bench. Expect small fixes on first use.
+No local machine at hand? [`notebooks/calibrate_colab.ipynb`](notebooks/calibrate_colab.ipynb) runs
+a third plan section (`colab-t4`) on a free Colab T4: it tests the tooling and the simulator's model of
+a CPU plus discrete GPU on real hardware, though it says nothing about the i9 or the M2.
+
+The plan's model files exist on Hugging Face under the listed names, and the headers of the real
+files match the simulator's shapes to the parameter. llama-bench itself has never been run by this
+project: its output format was checked against its source, and the whole runner was exercised
+against a fake llama-bench. Expect small fixes on first use.
 
 ## Quick start
 

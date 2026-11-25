@@ -8,17 +8,23 @@ benchmarks it was **not** tuned on.
 |---|---|---|
 | `i9-11900kf-3080ti` (primary) | Intel i9-11900KF, NVIDIA RTX 3080 Ti 12 GB | `configs/i9_11900kf_rtx3080ti.json` |
 | `macbook-m2` (secondary) | Apple MacBook Pro M2, 16 GB unified memory | `configs/macbook_m2.json` |
+| `colab-t4` (tooling and model check) | Google Colab T4 runtime: 2 vCPUs, about 12.7 GB RAM, Tesla T4 16 GB | `configs/colab_t4.json` |
+
+The Colab machine says nothing about the other two; it tests the tooling on real hardware and the
+simulator's model of a CPU plus discrete GPU, without needing either of the calibration machines.
 
 Both profiles are **uncalibrated priors** built from public specifications. Set the installed RAM
 (`mem_capacity` of `host`; on the M2, of both devices, which share one memory domain) before use.
 
-> **What has and has not been run.** These tools were developed without a GPU, llama.cpp or model
-> files. What *was* checked: the llama-bench JSON format against the llama-bench source vendored
-> in llama-cpp-python 0.3.38; the GGUF header reader against the reference `gguf` package (its
-> writer, reader and block-size table); the Qwen3-MoE router interface against transformers 5.24;
-> the whole runner end to end against a fake llama-bench whose results come from a simulated
-> machine with known parameters (the fit recovers them). What was **not**: any real measurement.
-> Expect small fixes on first contact; fix the scripts, never the plan.
+> **What has and has not been run.** These tools were developed without a GPU or llama.cpp. What
+> *was* checked: the plan's model files exist under the listed names, and the headers of the real
+> files (Qwen3 4B, 8B, 14B and 30B-A3B, Q4_K_M) match the simulator's model shapes to the parameter
+> (`tests/fixtures/qwen3_gguf_headers.json`); the llama-bench JSON format against the llama-bench
+> source vendored in llama-cpp-python 0.3.38; the GGUF header reader against the reference `gguf`
+> package; the Qwen3-MoE router interface against transformers 5.24; the whole runner end to end
+> against a fake llama-bench whose results come from a simulated machine with known parameters
+> (the fit recovers them). What was **not**: llama-bench itself, and any real measurement. Expect
+> small fixes on first contact; fix the scripts, never the plan.
 
 ## Rules of evidence
 
@@ -43,6 +49,7 @@ Both profiles are **uncalibrated priors** built from public specifications. Set 
 |---|---|---|
 | i9 + 3080 Ti | Qwen3-4B and 8B, all layers on CPU / all on GPU | 8B partial offload (12, 24 layers) and at 4096 tokens of context; 14B CPU, partial, full GPU; 30B-A3B CPU, 12 and 24 layers, and all layers on GPU with the experts of the first 24/32/40/48 layers on the CPU (`--n-cpu-moe`) |
 | M2 | the same four | 8B partial offload and at 4096 context; 4B at 4096 context; 14B CPU, partial, full GPU |
+| Colab T4 | the same four | 8B partial offload and at 4096 context; 4B at 4096 context; 14B partial and full GPU |
 
 Each llama-bench run gives a prompt-processing and a generation measurement, so the desktop plan
 yields 8 calibration and 28 validation measurements. The calibration runs pin down CPU and GPU
@@ -63,8 +70,9 @@ models works; the header is checked):
 | `qwen3-14b` | `Qwen3-14B-Q4_K_M.gguf` | `Qwen/Qwen3-14B-GGUF` |
 | `qwen3-30b-a3b` | `Qwen3-30B-A3B-Q4_K_M.gguf` | `Qwen/Qwen3-30B-A3B-GGUF` (desktop only) |
 
-The repository names were not verified from the development container; use any copy of the
-same model, renamed or passed with `--model NAME=PATH`.
+These names and repositories exist on Hugging Face (checked); their bits per weight are 4.95,
+4.90, 4.87 and 4.86. Any other copy of the same model also works, renamed or passed with
+`--model NAME=PATH`.
 
 ```bash
 python -m benchmarks.run_calibration --machine i9-11900kf-3080ti --dry-run     # list the runs
@@ -107,6 +115,16 @@ The last line says `PASS`, `FAIL` or `NOT EVALUATED` for the validation split.
 
 Commit `evidence/<machine>/` (and the profile if updated) with the verdict in the commit message.
 `run_report` reads every `evidence/*/measurements.json` by default.
+
+## On Google Colab
+
+[`notebooks/calibrate_colab.ipynb`](../notebooks/calibrate_colab.ipynb) runs the `colab-t4` plan on a
+free T4 runtime: open it in Colab (the badge in its first cell), choose *Runtime -> Change runtime
+type -> T4 GPU*, then *Run all*. It builds llama.cpp with CUDA, downloads the three models, micro-profiles
+the hardware with PyTorch (`benchmarks.profile_hardware`, which seeds the prior), runs the plan, fits and
+validates, prints every measurement against its prediction, and downloads `evidence/colab-t4/` as a zip
+(or pushes it, if you set `PUSH = True` and give a token). About an hour, mostly CPU-only runs on two
+vCPUs. Commit the evidence as for the other machines.
 
 ## Optional measurements
 

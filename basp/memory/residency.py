@@ -86,7 +86,9 @@ class ResidencyMap:
                 self.scratch[dev.device_id] = self.scratch[owner]
                 self.main[dev.device_id] = self.main[owner]
                 continue
-            scratch = min(int(dev.mem_capacity * scratch_fraction), scratch_max)
+            # a shared (unified) memory pool gives every device of the domain its usual scratch share
+            sharing = sum(1 for d in topology.devices if topology.memory_owner(d) == dev.device_id)
+            scratch = min(int(dev.mem_capacity * scratch_fraction), scratch_max) * sharing
             scratch -= scratch % 64
             self.scratch[dev.device_id] = Allocator(max(scratch, 64))
             self.main[dev.device_id] = Allocator(max(dev.mem_capacity - scratch, 64))

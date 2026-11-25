@@ -33,13 +33,15 @@ python -m benchmarks.run_calibration --machine i9-11900kf-3080ti \
     --models-dir ~/models --llama-bench ~/llama.cpp/build/bin/llama-bench
 ```
 
-Machines: `i9-11900kf-3080ti` (primary), `macbook-m2` (secondary). The runner checks each GGUF
+Machines: `i9-11900kf-3080ti` (primary), `macbook-m2` (secondary), `colab-t4` (Google Colab;
+run it with `notebooks/calibrate_colab.ipynb`). The runner checks each GGUF
 file's shape against the simulator, records bits per weight, resumes after interruption, fits the
 profile on the calibration split and scores the validation split into `evidence/<machine>/`.
 Before the first run, set the installed RAM (`mem_capacity` of the host) in the machine's profile
 in `configs/` and say so in the commit.
 
-The hardware-facing scripts were written without access to a GPU, llama.cpp or model files.
+The hardware-facing scripts were written without access to a GPU or llama.cpp (the model files'
+headers were checked against the simulator's shapes; `tests/fixtures/qwen3_gguf_headers.json`).
 If one fails on first contact, fix the script (keep the fix minimal, add a test reproducing the
 real output format), not the plan. Then:
 

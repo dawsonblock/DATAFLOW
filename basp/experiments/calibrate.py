@@ -38,6 +38,7 @@ from basp.workloads.zoo import MODELS
 MACHINE_PROFILES: dict[str, str] = {
     "i9-11900kf-3080ti": "i9_11900kf_rtx3080ti",
     "macbook-m2": "macbook_m2",
+    "colab-t4": "colab_t4",
 }
 
 

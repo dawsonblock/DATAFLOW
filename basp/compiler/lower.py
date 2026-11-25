@@ -298,16 +298,21 @@ class ModelProgram:
         return LayerOps(self._emit(graph, [op]), {"x": y})
 
     def lm_head(self, graph: Graph, step: int, x: int) -> LayerOps:
-        """Output projection; row shards may run on different devices."""
+        """Output projection; row shards may run on different devices.
+
+        For a prompt only the last token's logits are computed (as llama.cpp does when
+        processing a prompt): one row, not one per prompt token.
+        """
         s = self.spec
         if not self.head_w:
             return LayerOps([], {"logits": x})
-        logits = self._activation(graph, f"s{step}.logits", width=s.vocab)
+        rows = 1 if self.prompt else self.batch
+        logits = self._activation(graph, f"s{step}.logits", rows=rows, width=s.vocab)
         weights = tuple(self._weight(graph, w) for w in self.head_w)
         op = OpNode(
-            self._op_id(), OpCode.MATVEC if self.batch == 1 else OpCode.MATMUL, f"s{step}.lm_head",
-            inputs=(x,), weights=weights, outputs=(logits,), macs=self.batch * s.head_params,
-            batch=self.batch, output_device=self.sample_device, partitionable=len(weights) > 1,
+            self._op_id(), OpCode.MATVEC if rows == 1 else OpCode.MATMUL, f"s{step}.lm_head",
+            inputs=(x,), weights=weights, outputs=(logits,), macs=rows * s.head_params,
+            batch=rows, output_device=self.sample_device, partitionable=len(weights) > 1,
             attrs={"step": step, "head": True},
         )  # fmt: skip
         return LayerOps(self._emit(graph, [op]), {"logits": logits})

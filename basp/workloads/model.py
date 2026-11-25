@@ -31,6 +31,8 @@ class MoEModelSpec:
     weight_format: CompressionFormat = CompressionFormat.INT4
     #: experts that every token uses in addition to the routed ones (part of the trunk block)
     n_shared_experts: int = 0
+    #: per-head RMSNorm of queries and keys (Qwen3): one head_dim weight vector each per layer
+    qk_norm: bool = False
     #: attention parameters per layer when the architecture is not plain QKVO projections
     attn_params_override: int | None = None
     #: provenance of the shape: "published config", "representative" or "hypothetical"
@@ -69,7 +71,8 @@ class MoEModelSpec:
 
     @property
     def norm_params(self) -> int:
-        return 2 * self.hidden  # two RMSNorm weight vectors per layer
+        # two RMSNorm weight vectors per layer, plus the query and key norms where the model has them
+        return 2 * self.hidden + (2 * self.head_dim if self.qk_norm else 0)
 
     @property
     def trunk_params(self) -> int:
@@ -121,6 +124,7 @@ QWEN3_30B_A3B = MoEModelSpec(
     n_kv_heads=4,
     head_dim=128,
     vocab=151936,
+    qk_norm=True,
     source="published config",
 )
 

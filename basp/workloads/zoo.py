@@ -13,15 +13,17 @@ from basp.workloads.model import QWEN3_30B_A3B, MoEModelSpec, tiny_spec
 
 
 def _dense(name: str, hidden: int, layers: int, heads: int, kv_heads: int, intermediate: int,
-           vocab: int, *, tied: bool = False, source: str = "published config") -> MoEModelSpec:  # fmt: skip
+           vocab: int, *, tied: bool = False, qk_norm: bool = False,
+           source: str = "published config") -> MoEModelSpec:  # fmt: skip
     return MoEModelSpec(name, hidden=hidden, n_layers=layers, n_experts=1, top_k=1,
                         expert_inter=intermediate, n_heads=heads, n_kv_heads=kv_heads,
-                        head_dim=128, vocab=vocab, tied_embeddings=tied, source=source)  # fmt: skip
+                        head_dim=128, vocab=vocab, tied_embeddings=tied, qk_norm=qk_norm,
+                        source=source)  # fmt: skip
 
 
-QWEN3_4B = _dense("Qwen3-4B", 2560, 36, 32, 8, 9728, 151936, tied=True)
-QWEN3_8B = _dense("Qwen3-8B", 4096, 36, 32, 8, 12288, 151936)
-QWEN3_14B = _dense("Qwen3-14B", 5120, 40, 40, 8, 17408, 151936)
+QWEN3_4B = _dense("Qwen3-4B", 2560, 36, 32, 8, 9728, 151936, tied=True, qk_norm=True)
+QWEN3_8B = _dense("Qwen3-8B", 4096, 36, 32, 8, 12288, 151936, qk_norm=True)
+QWEN3_14B = _dense("Qwen3-14B", 5120, 40, 40, 8, 17408, 151936, qk_norm=True)
 LLAMA_70B = _dense("Llama-3.3-70B", 8192, 80, 64, 8, 28672, 128256)
 
 # DeepSeek-V3: 61 layers, 256 routed experts (8 selected) plus one shared expert, hidden 7168,

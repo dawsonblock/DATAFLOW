@@ -1,6 +1,6 @@
 {
   "_note": "PRE-REGISTERED CALIBRATION PLAN, fixed before any result exists. Every benchmark's split is decided here: the calibration split may tune the simulator, the validation split only judges it. Never move a benchmark between splits after seeing a result, and never edit this file to make validation pass; to test a model fix, add new benchmarks to the validation split of a new plan version. Each llama-bench run yields a prompt-processing and a generation measurement.",
-  "version": 1,
+  "version": 2,
   "defaults": {
     "repetitions": 3,
     "n_prompt": 512,
@@ -155,6 +155,67 @@
           ]
         }
       ]
+    },
+    "colab-t4": {
+      "profile": "colab_t4",
+      "_why": "Colab's T4 runtime, for testing the tooling on real hardware and the simulator's model of a discrete GPU. Two vCPUs make CPU-only runs slow, so the 14B model is validated only with GPU offload.",
+      "runs": [
+        {
+          "split": "calibration",
+          "model": "qwen3-4b",
+          "ngl": [
+            0,
+            99
+          ]
+        },
+        {
+          "split": "calibration",
+          "model": "qwen3-8b",
+          "ngl": [
+            0,
+            99
+          ]
+        },
+        {
+          "split": "validation",
+          "model": "qwen3-8b",
+          "ngl": [
+            12,
+            24
+          ]
+        },
+        {
+          "split": "validation",
+          "model": "qwen3-8b",
+          "ngl": [
+            99
+          ],
+          "depth": [
+            4096
+          ]
+        },
+        {
+          "split": "validation",
+          "model": "qwen3-4b",
+          "ngl": [
+            99
+          ],
+          "depth": [
+            4096
+          ]
+        },
+        {
+          "split": "validation",
+          "model": "qwen3-14b",
+          "ngl": [
+            20,
+            99
+          ]
+        }
+      ]
     }
-  }
+  },
+  "_changes": [
+    "v2 (before any measurement existed): added the colab-t4 machine; the i9 and M2 sections are unchanged."
+  ]
 }

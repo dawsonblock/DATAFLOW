@@ -29,7 +29,7 @@ decision, because runtime measurements are what make that decision credible.
 | Release | Objective | Exit requirement | State |
 |---|---|---|---|
 | v0.3 | Repair and evidence infrastructure | Trustworthy, reproducible results; missing or stale evidence cannot produce GO | **Done** (below) |
-| v0.4 | Hardware calibration | Held-out prediction error within thresholds on both machines | **Ready to run**: `benchmarks.run_calibration`; nothing measured yet |
+| v0.4 | Hardware calibration | Held-out prediction error within thresholds on both machines | **Ready to run**: `benchmarks.run_calibration` on each machine, `notebooks/calibrate_colab.ipynb` for a Colab T4; nothing measured yet |
 | v0.5 | Real model execution | Tokens from pretrained GGUF models; intermediate tensors and logits verified against a reference; quality parity | Not started (GGUF header reader and backend contract in place) |
 | v0.6 | Native execution backends | CPU (SIMD), CUDA and Metal backends behind the `Payload` contract; compiled C++ scheduler | Not started |
 | v0.7 | Adaptive memory and expert management | Measured improvement over a tuned llama.cpp (incl. `--n-cpu-moe`) on the same machine | Not started |
