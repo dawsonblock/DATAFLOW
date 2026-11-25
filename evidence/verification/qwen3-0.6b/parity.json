@@ -1,4 +1,7 @@
 {
+ "backend": [
+  "numpy-cpu"
+ ],
  "config": {
   "architecture": "qwen3",
   "context_length": 40960,
@@ -160,7 +163,7 @@
     "benchmark": "e37e10080d3e3f5e3497054f824075df56be8a058f2beb4317336a006ed6bae3",
     "machine": "Linux x86_64 Intel(R) Xeon(R) Processor @ 2.10GHz (4 logical CPUs)",
     "model": "qwen3-0.6b",
-    "runtime": "9eda9e9ff4ef003ba1bf121fe4a380ad65058cc753cafa2e76c0d4812758fa71",
+    "runtime": "fc529ae10f292102aba99b85f8c1b66f9e65a11e6fb47063357904fb910979b2",
     "weights": "9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031"
    },
    "candidate": "runtime:numpy-cpu",
@@ -168,7 +171,7 @@
    "metric": "numerical_error",
    "note": "max relative L2 of logits, prompt and decode",
    "raw": {},
-   "receipt_id": "62171e1ef48660dc",
+   "receipt_id": "c2d64302ac6e851f",
    "regime": "qwen3-0.6b, float32 CPU execution, parity with the transformers reference",
    "repetitions": 1,
    "value": 2.7508459357729636e-06
@@ -179,7 +182,7 @@
     "benchmark": "e37e10080d3e3f5e3497054f824075df56be8a058f2beb4317336a006ed6bae3",
     "machine": "Linux x86_64 Intel(R) Xeon(R) Processor @ 2.10GHz (4 logical CPUs)",
     "model": "qwen3-0.6b",
-    "runtime": "9eda9e9ff4ef003ba1bf121fe4a380ad65058cc753cafa2e76c0d4812758fa71",
+    "runtime": "fc529ae10f292102aba99b85f8c1b66f9e65a11e6fb47063357904fb910979b2",
     "weights": "9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031"
    },
    "candidate": "runtime:numpy-cpu",
@@ -187,80 +190,87 @@
    "metric": "model_quality",
    "note": "perplexity relative to the reference on the same weights",
    "raw": {},
-   "receipt_id": "f962cd5c8a490f6c",
+   "receipt_id": "362f6da62ecc0e06",
    "regime": "qwen3-0.6b, float32 CPU execution, parity with the transformers reference",
    "repetitions": 1,
    "value": 1.0000010296805477
   }
  ],
  "routing": null,
- "runtime_fingerprint": "9eda9e9ff4ef003ba1bf121fe4a380ad65058cc753cafa2e76c0d4812758fa71",
- "seconds": 35.62656489599999,
+ "runtime_fingerprint": "fc529ae10f292102aba99b85f8c1b66f9e65a11e6fb47063357904fb910979b2",
+ "seconds": 43.66832121100015,
  "shapes_match": true,
  "telemetry": {
   "decode": {
-   "seconds": 1.1102891430000454,
+   "seconds": 1.5977749590001622,
    "tokens": 15,
-   "tokens_per_s": 13.509994306050228
+   "tokens_per_s": 9.388055505254966
   },
   "experts": {
    "cache_hits": 0,
-   "loads": 0
+   "loads": 0,
+   "requests": 0,
+   "stored_bytes": 0,
+   "token_expert_pairs": 0
+  },
+  "forward": {
+   "calls": 18,
+   "rows": 86
   },
   "ops": [
    {
     "backend": "numpy-cpu",
     "count": 1008,
     "op": "add",
-    "seconds": 0.007797748004122695
+    "seconds": 0.01015083100173797
    },
    {
     "backend": "numpy-cpu",
     "count": 504,
     "op": "attention",
-    "seconds": 0.13499223999997412
+    "seconds": 0.1510903920052442
    },
    {
     "backend": "numpy-cpu",
     "count": 18,
     "op": "embedding",
-    "seconds": 0.0003340790001402638
+    "seconds": 0.001308451000113564
    },
    {
     "backend": "numpy-cpu",
     "count": 1008,
     "op": "head_rms_norm",
-    "seconds": 0.04360609299851603
+    "seconds": 0.053281242005141394
    },
    {
     "backend": "numpy-cpu",
     "count": 2034,
     "op": "matmul",
-    "seconds": 0.8994058390014743
+    "seconds": 1.5387365909919026
    },
    {
     "backend": "numpy-cpu",
     "count": 1026,
     "op": "rms_norm",
-    "seconds": 0.04451187100016796
+    "seconds": 0.05996218298878375
    },
    {
     "backend": "numpy-cpu",
     "count": 1008,
     "op": "rope",
-    "seconds": 0.059810596003444516
+    "seconds": 0.074475234023339
    },
    {
     "backend": "numpy-cpu",
     "count": 504,
     "op": "swiglu",
-    "seconds": 0.7763219309990745
+    "seconds": 1.4308601979964806
    }
   ],
   "prefill": {
-   "seconds": 0.9102332509999087,
+   "seconds": 1.8088739220002026,
    "tokens": 71,
-   "tokens_per_s": 78.00198457044405
+   "tokens_per_s": 39.25093901596534
   }
  },
  "thresholds": {

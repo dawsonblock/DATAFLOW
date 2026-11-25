@@ -1,4 +1,4 @@
-"""The v0.4 report: architecture discovery, investigations, the physical runtime's verification,
+"""The v0.5 report: architecture discovery, investigations, the physical runtime's verification,
 expert-cache policies, and the evidence-gated decision (decided from receipts).
 
 Deterministic: the same code, profiles, estimates, inputs and seeds give byte-identical
@@ -72,6 +72,7 @@ from basp.experiments.variants import (
     routing_source,
     run_architecture,
     set_context,
+    trace_matches,
     traces,
 )
 from basp.memory import ExpertCost, compare, trace_steps
@@ -195,10 +196,11 @@ def regime_ratios(key: str, *, candidates=("D", "E", "F", "H"), corner: str = "p
     }
 
 
-def expert_cache_policies(spec, profile_name: str, *, steps: int = 128,
-                          capacities_gib: tuple[int, ...] = (2, 4, 8)) -> dict[str, Any]:  # fmt: skip
+def expert_cache_policies(spec, profile_name: str, *, steps: int = 128, capacities_gib: tuple[int, ...] = (2, 4, 8),
+                          trace: RoutingTrace | None = None) -> dict[str, Any]:  # fmt: skip
     """Expert-cache policies on a GPU with too little memory for every expert (E1: costs from the
-    profile, routing synthetic).  Misses execute on the CPU or migrate over the GPU link."""
+    profile; routing recorded if ``trace`` is given, else synthetic).  Misses execute on the CPU
+    or migrate over the GPU link."""
     topo = load_topology(profile_name)
     host = topo.devices[topo.host]
     gpu = topo.of_kind(DeviceKind.GPU)[0]
@@ -206,15 +208,18 @@ def expert_cache_policies(spec, profile_name: str, *, steps: int = 128,
     expert_bytes = int(spec.expert_params * 4.5 / 8)
     cost = ExpertCost.from_rates(expert_bytes, gpu_bandwidth=gpu.mem_bandwidth, cpu_bandwidth=host.mem_bandwidth,
                                  link_bandwidth=link.bandwidth_ab, link_latency_s=link.latency_s)  # fmt: skip
-    trace = synth_trace(steps, spec.n_layers, spec.n_experts, spec.top_k, zipf_s=0.8, stickiness=0.6, seed=7)
+    source = "recorded" if trace is not None else "synthetic"
+    if trace is None:
+        trace = synth_trace(steps, spec.n_layers, spec.n_experts, spec.top_k, zipf_s=0.8, stickiness=0.6, seed=7)
     sequence = trace_steps(trace)
+    steps = len(sequence)
     rows = []
     for gib in capacities_gib:
         for r in compare(sequence, gib * GiB, lambda _key: cost):
             rows.append({"capacity_gib": gib, **r.to_json(), "ms_per_token": 1e3 * r.time_s / steps,
                          "mb_migrated_per_token": r.bytes_migrated / steps / 1e6,
                          "cpu_share": r.cpu_executions / r.activations if r.activations else 0.0})  # fmt: skip
-    return {"profile": profile_name, "expert_mib": expert_bytes / 2**20, "steps": steps,
+    return {"profile": profile_name, "expert_mib": expert_bytes / 2**20, "steps": steps, "routing": source,
             "all_experts_gib": spec.n_layers * spec.n_experts * expert_bytes / GiB,
             "cost": {"t_gpu_us": cost.t_gpu * 1e6, "t_cpu_us": cost.t_cpu * 1e6,
                      "t_migration_us": cost.t_migration * 1e6}, "rows": rows}  # fmt: skip
@@ -232,6 +237,7 @@ def runtime_verification(evidence: str | Path | None) -> list[dict[str, Any]]:
     for file in sorted(Path(evidence).glob("verification/*/parity.json")):
         r = json.loads(file.read_text())
         out.append({"model": r["model"], "file": r["file"]["name"], "verdict": r["verdict"],
+                    "backend": ", ".join(r.get("backend", ["numpy-cpu"])),
                     "reasons": r["reasons"], "numerical_error": r["numerical_error"],
                     "hidden_rel_l2_max": r["hidden"]["rel_l2_max"], "layers": r["hidden"]["layers_compared"],
                     "routing": r["routing"], "generation_identical": r["generation"]["identical"],
@@ -241,6 +247,113 @@ def runtime_verification(evidence: str | Path | None) -> list[dict[str, Any]]:
                     "decode_tokens_per_s": r["telemetry"]["decode"]["tokens_per_s"],
                     "stale": r["runtime_fingerprint"] != now})  # fmt: skip
     return out
+
+
+def speculative_evidence(evidence: str | Path | None) -> dict[str, Any]:
+    """Recorded speculative-execution measurements (``benchmarks.speculative_bench``), each
+    marked stale if the runtime code changed since it was measured."""
+    from basp.verification.parity_report import runtime_fingerprint
+
+    out: dict[str, Any] = {}
+    if evidence is None or not (Path(evidence) / "speculative").is_dir():
+        return out
+    now = runtime_fingerprint()
+    for file in sorted((Path(evidence) / "speculative").glob("*.json")):
+        data = json.loads(file.read_text())
+        data["stale"] = data.get("environment", {}).get("runtime_fingerprint") != now
+        out[file.stem] = data
+    return out
+
+
+def _speculative_section(spec_ev: dict[str, Any]) -> str:
+    """Markdown for section 11, computed from the recorded measurements."""
+    if not spec_ev:
+        return ("## 11. Speculative execution and grouped expert reads\n\nNothing has been measured "
+                "(`python -m benchmarks.speculative_bench`).")
+    parts = ["## 11. Speculative execution and grouped expert reads (measured)", "",
+             ("A drafter proposes several tokens; the target model verifies them in one pass, so on a "
+             "mixture-of-experts model every expert any of them selects is read once for all of them. "
+             "Greedy acceptance keeps exactly the target's tokens; sampling acceptance keeps its "
+             "distribution (tested). Everything below was measured on the verification machine's CPU "
+             "with this runtime (float32 kernels, weights dequantised by the runtime): wall-clock "
+             "numbers describe this runtime, not an optimised engine; acceptance rates and expert "
+             "reads describe the models and the method. Evidence E3, about these models only.")]  # fmt: skip
+    for key in sorted(k for k in spec_ev if k.startswith("dense")):
+        d = spec_ev[key]
+        rows = []
+        for name, runs in d["prompts"].items():
+            base = runs["sequential"]
+            rows.append([name, "sequential", f"{base['tokens_per_s']:.2f}", "1.00x", "-", "-"])
+            for label, r in runs.items():
+                if label in ("sequential", "text"):
+                    continue
+                rows.append([name, label, f"{r['tokens_per_s']:.2f}", f"{r['speedup']:.2f}x",
+                             f"{r['acceptance']:.0%}", "yes" if r["identical"] else
+                             f"no (step {r['first_divergence']})"])  # fmt: skip
+        best = max(((n, lbl, r["speedup"]) for n, runs in d["prompts"].items() for lbl, r in runs.items()
+                    if isinstance(r, dict) and "speedup" in r), key=lambda x: x[2])  # fmt: skip
+        worst = min(((n, lbl, r["speedup"]) for n, runs in d["prompts"].items() for lbl, r in runs.items()
+                     if isinstance(r, dict) and "speedup" in r), key=lambda x: x[2])  # fmt: skip
+        identical = all(r["identical"] for runs in d["prompts"].values() for lbl, r in runs.items()
+                        if isinstance(r, dict) and "identical" in r)  # fmt: skip
+        backend = ", ".join(d.get("backend", ["numpy-cpu"]))
+        parts += ["", (f"**Dense: {d['draft']} drafting for {d['target']}** ({d['tokens']} greedy tokens per prompt, "
+                  f"backend {backend}){' -- stale: the runtime changed since' if d['stale'] else ''}:"), "",
+                  table(["prompt", "method", "tokens/s", "speed-up over plain decoding", "acceptance",
+                         "tokens identical"], rows), "",
+                  f"Best {best[2]:.2f}x ({best[0]}, {best[1]}); worst {worst[2]:.2f}x ({worst[0]}, {worst[1]}). "
+                  + ("Every speculative run produced exactly the target's own greedy tokens." if identical else
+                     "Some runs diverged from sequential decoding (see the table): batched and single-row "
+                     "float32 arithmetic can flip a near-tied choice.")]  # fmt: skip
+    moe = spec_ev.get("qwen3-30b-a3b")
+    if moe:
+        seq = moe["sequential"]
+        union = moe["union_curve"]
+        u_rows = [[g, f"{v:.2f}", f"{union['1'] / v:.2f}x"] for g, v in union.items()]
+        sp_rows = []
+        for label in ("draft model, k=4", "prompt lookup, k=4"):
+            r = moe.get(label)
+            if r:
+                sp_rows.append([label, f"{r['acceptance']:.0%}", f"{r['tokens_per_target_call']:.2f}",
+                                f"{r['decode_expert_requests_per_token']:.0f}",
+                                f"{r['decode_expert_reduction']:.2f}x", f"{r['seconds']:.0f}",
+                                "yes" if r["identical"] else f"no (step {r['first_divergence']})"])  # fmt: skip
+        pred_rows = [[label, *[f"{v[n]['hit_rate']:.0%}" for n in ("8", "16", "32")]]
+                     for label, v in moe["predictors"].items()]  # fmt: skip
+        n_layers = moe["config"]["n_layers"]
+        parts += ["", f"**Mixture of experts: {moe['target']}** (real weights, real routing; "
+                  f"perplexity {moe['perplexity']['value']:.2f} on the {moe['perplexity']['tokens']}-token check text -- "
+                  "a broken expert path gives nonsense; the text is probably memorised by a model this size)"
+                  + (" -- stale: the runtime changed since" if moe["stale"] else "") + ".", "",
+                  (f"Ordinary decoding read {seq['decode_expert_requests_per_token']:.0f} experts per token "
+                  f"({seq['decode_expert_requests_per_token'] / n_layers:.1f} per layer: top-8 of 128, "
+                  f"{seq['decode_expert_bytes_per_token'] / 1e6:.0f} MB of stored weights). If `g` consecutive tokens "
+                  "of the same greedy continuation are processed together, each layer needs the union of their "
+                  "experts:"), "",
+                  table(["tokens per pass (g)", "distinct experts per layer per token", "fewer expert reads"], u_rows),
+                  "", ("Speculative decoding on the same prompt (the 0.6B model drafts; rejected proposals are "
+                  "read too, so the saving is below the union curve's):"), "",
+                  table(["drafter", "acceptance", "tokens per target pass", "expert reads per token",
+                         "fewer expert reads", "seconds", "tokens identical"], sp_rows), "",
+                  (f"Wall clock in this runtime: {seq['seconds'] / len(seq['tokens']):.1f} s per token for plain decoding, "
+                   + ", ".join(f"{moe[lbl]['seconds'] / moe[lbl]['tokens']:.1f} s with {lbl}"
+                               for lbl in ("draft model, k=4", "prompt lookup, k=4") if lbl in moe)
+                   + " (dominated by dequantising experts; plain decoding ran first, with a colder disk cache)."),
+                  "",
+                  ("Expert prediction on the recorded routing (share of the selected experts inside the "
+                  "predicted set, predicting before each token; 128 experts, 8 selected):"), "",
+                  table(["predictor", "8 predicted", "16 predicted", "32 predicted"], pred_rows), "",
+                  (f"The routing of {len(moe['sequential']['tokens']) - 1} decoded tokens is saved in "
+                  "`evidence/traces/` in the simulator's format; `--trace` replaces synthetic routing with it.")]  # fmt: skip
+    prefix = spec_ev.get("prefix")
+    if prefix:
+        rows = [[r["tokens"], r["reused"], f"{r['full_prefill_s']:.2f}", f"{r['with_cache_s']:.2f}",
+                 f"{r['speedup']:.1f}x", "yes" if r["same_next_token"] else "no"] for r in prefix["rows"]]  # fmt: skip
+        parts += ["", (f"**Shared-prefix KV cache** ({prefix['model']}; four questions after the same system "
+                  "prompt; the first fills the cache):"), "",
+                  table(["prompt tokens", "reused from cache", "full prefill (s)", "with cache (s)", "speed-up",
+                         "same next token"], rows)]  # fmt: skip
+    return "\n".join(parts)
 
 
 def calibration_plan(profile_key: str = "i9-11900kf-3080ti") -> list[dict[str, Any]]:
@@ -480,8 +593,10 @@ def _build_report(quick: bool, dse_path, measurements_path, progress) -> tuple[s
     workloads = workload_suite(spec, quick=quick)
     done("workload types")
     correct = correctness()
-    caching = expert_cache_policies(spec, "desktop_gpu12", steps=32 if quick else 128)
+    recorded = ctx.trace if ctx.trace is not None and trace_matches(ctx.trace, spec) and ctx.trace.batch == 1 else None
+    caching = expert_cache_policies(spec, "desktop_gpu12", steps=32 if quick else 128, trace=recorded)
     verified = runtime_verification(measurements_path)
+    spec_ev = speculative_evidence(measurements_path)
     backends = DeviceManager.discover().report()
     routing = routing_source(spec)
     measured_formats = dict(ctx.formats)
@@ -574,6 +689,10 @@ def _build_report(quick: bool, dse_path, measurements_path, progress) -> tuple[s
         "measured_formats": {f.name: b for f, b in measured_formats.items()},
         "candidate_scaling": {"primary": primary_scaling, "favourable": ratios["scaling"]},
         "dse_stale": dse_stale, "expert_cache": caching, "runtime_verification": verified,
+        "speculative": {k: {kk: vv for kk, vv in v.items() if kk not in ("prompts",)} | (
+            {"prompts": {p: {lbl: {x: y for x, y in r.items() if x != "token_ids"} if isinstance(r, dict) else r
+                             for lbl, r in runs.items()} for p, runs in v["prompts"].items()}}
+            if "prompts" in v else {}) for k, v in spec_ev.items()},
         "backends": [{k: b[k] for k in ("name", "kind", "available", "reason")} for b in backends],
         "dse": None if dse is None else {k: v for k, v in dse.items() if k != "front"},
     }  # fmt: skip
@@ -727,7 +846,7 @@ def _build_report(quick: bool, dse_path, measurements_path, progress) -> tuple[s
                             f"{measured_formats[CompressionFormat.ENTROPY]:.2f} bits per weight")  # fmt: skip
     else:
         compression_line = "compression ratios are assumed"
-    md = f"""# BASP Dataflow v0.4 -- evidence-gated heterogeneous execution: simulation and runtime report
+    md = f"""# BASP Dataflow v0.5 -- predictive speculative execution: simulation and runtime report
 
 > **Read this first.** {status_line} Everything about
 > compute-memory modules (performance, power, price) is an estimate with a
@@ -735,7 +854,7 @@ def _build_report(quick: bool, dse_path, measurements_path, progress) -> tuple[s
 > existing hardware can narrow; {routing_line}; {compression_line}. Figures written `x (a-b)` give
 > the nominal value and the range over those estimates. Evidence levels: E0 estimate or argument,
 > E1 uncalibrated simulation, E2 simulation validated on existing hardware, E3 measurement.
-> Regenerate with `python -m benchmarks.run_report` (deterministic; see `provenance.json`).
+> Regenerate with `python -m benchmarks.run_report` (with `--trace` for recorded routing; deterministic; see `provenance.json`).
 
 ## 1. Hardware development decision
 
@@ -1019,7 +1138,7 @@ still generous to the module-based designs.
             ppl = v["perplexity"] or {}
             routing_text = ("dense" if v["routing"] is None else
                             "identical" if v["routing"]["exact"] else f"{v['routing']['mismatches']} differ")  # fmt: skip
-            vrows.append([f"{v['model']} (`{v['file']}`)", f"{v['numerical_error']:.1e}",
+            vrows.append([f"{v['model']} (`{v['file']}`)", v["backend"], f"{v['numerical_error']:.1e}",
                           f"{v['hidden_rel_l2_max']:.1e} over {v['layers']} layers", routing_text,
                           f"{v['generated_tokens']} identical" if v["generation_identical"] else "diverge",
                           f"{ppl['relative']:.6f}" if ppl else "-",
@@ -1033,7 +1152,7 @@ still generous to the module-based designs.
                           f"{quant['original_perplexity']:.2f} on the same {first['perplexity']['tokens']} tokens, greedy "
                           f"choice identical for {quant['logits']['argmax_agreement']:.0%} of positions; a text this short "
                           "does not measure quality.")  # fmt: skip
-        verified_text = (table(["model", "logits rel. L2 (max)", "layer outputs rel. L2 (max)", "expert routing",
+        verified_text = (table(["model", "backend", "logits rel. L2 (max)", "layer outputs rel. L2 (max)", "expert routing",
                                 "greedy tokens", "perplexity ratio", "verdict"], vrows)
                          + f"\n\nPrompt `{first['prompt']}` -> `{first['generated_text']}` (greedy, "
                          f"{first['decode_tokens_per_s']:.0f} tokens/s on the verification machine's CPU in NumPy)."
@@ -1092,7 +1211,7 @@ of experts at 4.5 bits per weight, {caching["expert_mib"]:.2f} MiB each): a miss
 ({caching["cost"]["t_cpu_us"]:.0f} us) or migrates the expert over PCIe ({caching["cost"]["t_migration_us"]:.0f} us)
 and runs on the GPU ({caching["cost"]["t_gpu_us"]:.1f} us). Cost-aware caching values an expert at
 `V_e = (N_e (T_cpu - T_gpu) - T_migration) / M_e`; predictive caching estimates `N_e` from the measured
-next-step repeat rate. Expert time per token over {caching["steps"]} synthetic decoding steps (E1; no overlap of
+next-step repeat rate. Expert time per token over {caching["steps"]} {caching["routing"]} decoding steps (E1; no overlap of
 migration with computation for any policy):
 
 {table(["GPU expert cache", "policy", "hit rate", "run on CPU", "MB migrated per token", "expert ms per token"], cache_rows)}
@@ -1101,7 +1220,7 @@ An unbounded cache (every expert migrated once) needs {bounds["ms_per_token"]:.1
 trace. Fastest policy at each capacity: {gains}. LRU migrates far more data per token than the
 cost-aware policy ({traffic}), which instead runs rarely used experts on the CPU; whether that wins
 depends on how much of the working set the cache holds. The cost-aware horizon (32 steps of expected
-reuse) is a parameter, not tuned on this trace. These are simulated costs on a synthetic trace, not
+reuse) is a parameter, not tuned on this trace. These are simulated costs ({caching["routing"]} routing), not
 runtime measurements."""
     md += f"""
 ## 8. Numerical verification of the simulated dataflows
@@ -1126,7 +1245,16 @@ section 9 does.
 
 {cache_section}
 
-## 11. What changed since earlier reports
+{_speculative_section(spec_ev)}
+
+## 12. What changed since earlier reports
+
+New in v0.5: speculative execution in the physical runtime (draft-model and prompt-lookup drafters,
+exact greedy and distribution-preserving sampling acceptance, KV rollback, an adaptive draft-length
+controller), grouped expert reads with byte accounting, a memory-lean mode that runs Qwen3-30B-A3B,
+a shared-prefix KV cache, an optional PyTorch CPU backend under the same parity checks, and a
+recorded routing trace of Qwen3-30B-A3B (section 11). When the report is generated with that trace,
+the simulated experiments use real routing instead of synthetic routing.
 
 New in v0.4: the gate decides each criterion from **metric-specific receipts** bound to the
 identities that produced them (simulator source, configuration, profile, validation, model weights,
@@ -1155,8 +1283,8 @@ Corrected in v0.3 (each found in an audit of v0.2 or while fixing it, and covere
 Corrected in v0.2: batched GPU launches; the output projection's location chosen per token; the v0.1
 claim of bit-identical logits under every policy (true only while the reduction order is unchanged).
 
-The reports in `reports/v0.1/`, `reports/v0.2/` and `reports/v0.3/` were produced by earlier models and
-are kept as records; their numbers are superseded by this report.
+The reports in `reports/v0.1/` to `reports/v0.4/` were produced by earlier models and are kept as
+records; their numbers are superseded by this report.
 """
     return md, results
 

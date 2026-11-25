@@ -25,7 +25,7 @@ CONFIG_DIR = REPO_DIR / "configs"
 #: the physical runtime with its verification and memory-domain code, which the simulator never
 #: imports (the runtime has its own fingerprint, ``basp.verification.parity_report``)
 _NOT_SIMULATION_FILES = {
-    "experiments/report.py", "experiments/report_v4.py", "experiments/gate.py",
+    "experiments/report.py", "experiments/report_v5.py", "experiments/gate.py",
     "backends/execution.py", "backends/cpu/backend.py", "backends/cpu/kernels.py",
     "models/quants.py", "models/gguf_tensors.py", "models/gguf_writer.py",
     "memory/domains.py", "memory/admission.py", "memory/migration.py", "memory/expert_cache.py",

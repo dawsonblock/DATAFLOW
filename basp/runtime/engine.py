@@ -28,7 +28,8 @@ class Engine:
     def __init__(self, path: str | os.PathLike, *, devices: DeviceManager | None = None,
                  prefer: Sequence[str] = ("cuda", "metal", "ggml", "cpu"), overrides: dict[str, str] | None = None,
                  memory_bytes: int | None = None, reserved_fraction: float = 0.1,
-                 expert_cache_bytes: int | None = None) -> None:  # fmt: skip
+                 expert_cache_bytes: int | None = None, embedding: str = "resident",
+                 workers: int | None = None) -> None:  # fmt: skip
         self.path = os.fspath(path)
         self.tensors = GGUFTensors(self.path)
         self.config = ModelConfig.from_gguf(self.tensors.file)
@@ -41,8 +42,12 @@ class Engine:
         self.domain = MemoryDomain("host", capacity, devices=["cpu"], reserved=int(capacity * reserved_fraction))
         self.admission = AdmissionController(self.domain)
         self.weights = WeightStore(self.tensors, self.config, self.domain, self.telemetry,
-                                   expert_cache_bytes=expert_cache_bytes)  # fmt: skip
+                                   expert_cache_bytes=expert_cache_bytes, embedding=embedding,
+                                   workers=workers)  # fmt: skip
         self.model = Qwen3Model(self.config, self.weights, self.dispatcher)
+
+    def close(self) -> None:
+        self.weights.close()
 
     def session(self, max_tokens: int = 512) -> Session:
         return Session(self, max_tokens)

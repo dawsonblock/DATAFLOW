@@ -1,4 +1,4 @@
-# BASP Dataflow v0.4 — architecture of the implementation
+# BASP Dataflow v0.5 — architecture of the implementation
 
 This document describes what is implemented in this repository and how the pieces map onto the
 BASP Adaptive Dataflow Architecture. The first part covers the dataflow engine (v0.1); then
@@ -283,6 +283,37 @@ by the reference package, not the runtime's code) and compares logits per positi
 output, each expert selection, greedy generation through the KV cache against full recomputation,
 and perplexity. `parity_report.run_parity` returns all of it with a verdict and E3 receipts bound to
 the machine, the model and its weights' SHA-256, the runtime's source fingerprint and the benchmark.
+
+## Speculative execution and grouped expert reads (v0.5)
+
+`basp/runtime/speculative.py` adds speculative decoding to the physical runtime:
+
+```
+drafter.propose(committed, k)        ModelDrafter (a small model, same tokenizer, its own KV cache)
+                                     NgramDrafter (prompt lookup: no model call)
+target.prefill(pending + proposals)  one pass over k+1 rows; MoE layers group the rows by expert,
+                                     so each selected expert is fetched once for all of them
+accept                               greedy: while proposal == target's argmax
+                                     sampling: min(1, p/q), residual max(0, p - q) on rejection
+target.truncate(...)                 rejected proposals leave the KV cache
+AdaptiveController.choose()          k maximising expected tokens / (k c_draft + a + b (k+1)),
+                                     acceptance and costs measured online; k = 0 is plain decoding
+```
+
+The weight store fetches the experts a layer needs as one group, dequantising missing ones on
+worker threads (NumPy releases the interpreter lock), holds a reference on each until the layer
+is done, and counts the stored bytes of every expert a pass needs — the quantity speculative
+grouping reduces. With `embedding="rows"` token embeddings are read row by row from the file
+instead of being kept, which, with on-demand experts, runs Qwen3-30B-A3B in about 10 GB.
+
+`basp/runtime/prefix_cache.py` caches the KV rows of block-aligned prompt prefixes (charged to
+the memory domain, evicted least recently used) and copies them into new sessions that share
+the prefix.
+
+`basp/backends/torch_cpu` is a second implemented backend (optional, PyTorch's CPU kernels):
+the same operations, selected by the plan when preferred, and verified against transformers by
+the same harness. It exists because NumPy's BLAS multiplies 2–9 rows by a matrix at about four
+times the cost of one row, which hides the benefit of verifying several tokens per pass.
 
 ## Extending
 

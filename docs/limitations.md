@@ -1,4 +1,4 @@
-# Limitations of BASP Dataflow v0.4
+# Limitations of BASP Dataflow v0.5
 
 This release is a Python research system: a simulator, a scheduler, reference kernels, a
 design-space explorer, calibration tooling, an evidence-gated decision decided from receipts,
@@ -8,13 +8,39 @@ architectures means "what the model concludes under the stated assumptions", and
 evidence column says which level (E0–E3) each claim has. The only measurements (E3) are the
 runtime's numerical parity with transformers, on the machine that ran the verification.
 
+## Speculative execution (new in v0.5)
+
+* **Measured on one 4-core CPU with this runtime only.** Speed-ups are against this runtime's own
+  plain decoding, not against llama.cpp, KTransformers or any optimised engine; those comparisons
+  need the engines on the same machine (v0.6). The runtime dequantises weights in NumPy, so on the
+  30B MoE model its time is dominated by dequantisation and disk reads — which is why fewer expert
+  reads show up as wall-clock gains there, and why the absolute speed (a fraction of a token per
+  second) means nothing for deployment.
+* **The 30B wall-clock comparison is order-dependent.** Plain decoding ran first, with a colder
+  disk cache, than the speculative runs. Expert-read counts and acceptance rates do not have this
+  problem; the wall-clock ratio does.
+* **Few prompts, short runs.** Three prompts of 64 tokens (dense) and one prompt of 160 / 48 tokens
+  (30B). Acceptance rates depend strongly on the text (code is far easier to draft than prose).
+* **Exactness.** Greedy speculative output equalled plain greedy output in every measured run,
+  but batched and single-row float32 arithmetic are not bit-identical, so a near-tied choice could
+  flip in principle. Sampling exactness is tested statistically on a small model.
+* **Grouped reads are not free compute.** Verifying `k + 1` rows multiplies every weight by more
+  rows; with NumPy's BLAS that costs about four single-row products for two to nine rows, which is
+  why dense speculation loses on the NumPy backend; the PyTorch backend amortises it better.
+* **Rejected proposals cost memory traffic.** On the MoE model a poor drafter increased expert
+  reads per token (prompt lookup: 0.64x). Speculation must be switched off when acceptance is low;
+  the adaptive controller does this from measurements, but its cost model is simple (linear in rows).
+* **Expert prediction** is evaluated on 159 decoded tokens of one prompt; predicted experts are not
+  yet prefetched in the runtime.
+
 ## The physical runtime (new in v0.4)
 
-* **CPU only, NumPy, float32.** Weights are dequantised to float32 when a model is loaded, so the
-  runtime needs about four bytes of memory per parameter (Qwen3-0.6B: 2.2 GiB; a 30B model would
-  need about 120 GiB). Experts of MoE models are dequantised on demand and cached under a byte
-  limit, but dense weights are not. Its speed (13 tokens/s for Qwen3-0.6B on four container
-  cores) says nothing about BASP or about tuned engines such as llama.cpp.
+* **CPU only, float32 (NumPy, or PyTorch's CPU kernels when installed).** Dense weights are
+  dequantised to float32 when a model is loaded (about four bytes per dense parameter); experts of
+  MoE models are dequantised on demand and cached under a byte limit, and token embeddings can be
+  read row by row, so Qwen3-30B-A3B runs in about 10 GB. Its speed (13 tokens/s for Qwen3-0.6B,
+  0.17 for Qwen3-30B-A3B on four cores) says nothing about BASP or about tuned engines such as
+  llama.cpp.
 * **No GPU execution.** The CUDA, Metal, GGML and remote backends are declared and report
   themselves unavailable; any plan that needs them fails before running. Nothing here is GPU
   inference.
@@ -26,8 +52,9 @@ runtime's numerical parity with transformers, on the machine that ran the verifi
 * **Verification coverage.** A real model was verified for the dense path (Qwen3-0.6B, Q8_0):
   logits, 27 layer outputs, 16 greedy tokens and perplexity on a 61-token text. The MoE path
   (router, expert selection, expert execution) is verified against transformers on small
-  random-weight models only (in CI), not on a real MoE model: Qwen3-30B-A3B needs about 120 GiB
-  in this runtime. The perplexity text is far too short to say anything about model quality.
+  random-weight models only (in CI). The real Qwen3-30B-A3B runs and produces coherent text with a
+  plausible perplexity, but no reference small enough to compare its logits exists here. The
+  perplexity text is far too short to say anything about model quality.
 * **Receipts are bound to the model they measured.** The parity receipts concern Qwen3-0.6B and
   the NumPy runtime; they do not qualify the gate's numerical or quality criteria for the 30B
   regime, and the report says so.
@@ -129,9 +156,11 @@ runtime's numerical parity with transformers, on the machine that ran the verifi
 
 | Item | Status |
 |---|---|
-| Native CPU (C++/SIMD), CUDA, Metal and GGML backends | Declared, unavailable; deferred to v0.5 |
+| Native CPU (C++/SIMD), CUDA, Metal and GGML backends | Declared, unavailable; deferred to v0.6 (a PyTorch CPU backend exists) |
+| Comparison with llama.cpp / KTransformers on the same machine | Not done; required before any speed claim against existing engines |
+| Mixed-precision (sensitivity-based) quantisation with quality tests | Not started; deferred rather than guessed |
 | Architecture I (adaptive hierarchical execution, cost `T + λE + μR + γU`) | Deferred; not simulated |
-| Real MoE model run end to end (30B) | Needs a native backend or quantised arithmetic |
+| Real MoE model verified against a reference | Qwen3-30B-A3B runs (coherent output, perplexity 1.68 on a check text), but no reference fits in memory to compare logits |
 | `hardware/*.sv`, FPGA | Not started, by decision: blocked on the gate |
 | Multi-GPU conventional systems | Not modelled |
 | INT2 / ternary / sparse / entropy kernels | Modelled for traffic and decode cost only |
@@ -145,5 +174,5 @@ runtime's numerical parity with transformers, on the machine that ran the verifi
 * The quick report (`--quick`) uses short runs; its numbers differ from the full report's.
 * Generated files are byte-identical only on the same Python and NumPy versions; across Python
   3.10 and 3.13 simulated figures differ in the last digit.
-* `reports/v0.1/`, `reports/v0.2/` and `reports/v0.3/` were produced by earlier models and cannot
-  be regenerated from the current code; they are kept as records.
+* `reports/v0.1/` to `reports/v0.4/` were produced by earlier models and cannot be regenerated
+  from the current code; they are kept as records.

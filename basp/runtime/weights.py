@@ -8,11 +8,13 @@ current operation is referenced and is never evicted.
 
 from __future__ import annotations
 
+import os
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 
-from basp.memory import Category, MemoryDomain
+from basp.memory import Block, Category, MemoryDomain
 from basp.models.gguf_tensors import GGUFTensors
 
 from .config import ModelConfig, UnsupportedModel
@@ -49,9 +51,16 @@ def expected_tensors(config: ModelConfig) -> dict[str, tuple[int, ...]]:
 
 
 class WeightStore:
+    """``embedding="rows"`` reads token embeddings row by row instead of keeping the table (only
+    when the output projection does not share it); ``workers`` threads dequantise experts in
+    parallel (NumPy releases the interpreter lock while it works)."""
+
     def __init__(self, tensors: GGUFTensors, config: ModelConfig, domain: MemoryDomain, telemetry: Telemetry,
-                 *, expert_cache_bytes: int | None = None) -> None:  # fmt: skip
+                 *, expert_cache_bytes: int | None = None, embedding: str = "resident",
+                 workers: int | None = None) -> None:  # fmt: skip
         self.tensors, self.config, self.domain, self.telemetry = tensors, config, domain, telemetry
+        if embedding not in ("resident", "rows"):
+            raise ValueError("embedding must be 'resident' or 'rows'")
         expected = expected_tensors(config)
         present = {t.name for t in tensors.file.tensors}
         missing = sorted(set(expected) - present)
@@ -63,15 +72,19 @@ class WeightStore:
         for name, shape in expected.items():
             if tensors.shape(name) != shape:
                 raise UnsupportedModel(f"{name}: shape {tensors.shape(name)}, expected {shape}")
+        self.rows_embedding = embedding == "rows" and not config.tied_embeddings
+        self._pool = ThreadPoolExecutor(max_workers=workers or min(4, os.cpu_count() or 1))
+        names = [n for n in expected if not any(f".{kind}." in n for kind in _EXPERTS)
+                 and not (self.rows_embedding and n == "token_embd.weight")]  # fmt: skip
         self._dense: dict[str, np.ndarray] = {}
-        for name in expected:
-            if any(f".{kind}." in name for kind in _EXPERTS):
-                continue
-            array = tensors.load(name)
+        for name, array in zip(names, self._pool.map(tensors.load, names)):
             domain.allocate(array.nbytes, Category.WEIGHTS, name, pinned=True)
             self._dense[name] = array
         self.expert_cache_bytes = expert_cache_bytes
-        self._experts: OrderedDict[tuple[int, int], tuple[tuple[np.ndarray, ...], object]] = OrderedDict()
+        self._experts: OrderedDict[tuple[int, int], tuple[tuple[np.ndarray, ...], Block]] = OrderedDict()
+        # stored (quantised) bytes of one expert, per layer: formats can differ between layers
+        self._expert_stored = [sum(tensors.slice_nbytes(f"blk.{i}.{k}.weight") for k in _EXPERTS)
+                               for i in range(config.n_layers)] if config.moe else []  # fmt: skip
 
     def __getitem__(self, name: str) -> np.ndarray:
         return self._dense[name]
@@ -80,23 +93,65 @@ class WeightStore:
     def output(self) -> np.ndarray:
         return self._dense["token_embd.weight" if self.config.tied_embeddings else "output.weight"]
 
-    def expert(self, layer: int, e: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        key = (layer, e)
-        if key in self._experts:
-            self._experts.move_to_end(key)
+    def embed(self, ids: np.ndarray) -> np.ndarray:
+        if self.rows_embedding:
+            return self.tensors.load_rows("token_embd.weight", ids)
+        return self._dense["token_embd.weight"][ids]
+
+    # -- experts ------------------------------------------------------------------------------
+    def fetch(self, layer: int, experts) -> dict[int, tuple[np.ndarray, np.ndarray, np.ndarray]]:
+        """Dequantised weights of ``experts`` of one layer, loading missing ones in parallel.
+        Each returned expert is referenced (cannot be evicted) until ``release``."""
+        wanted = sorted({int(e) for e in experts})
+        self.telemetry.expert_requests += len(wanted)
+        self.telemetry.expert_bytes += len(wanted) * self._expert_stored[layer]
+        out = {}
+        missing = []
+        for e in wanted:
+            entry = self._experts.get((layer, e))
+            if entry is None:
+                missing.append(e)
+                continue
+            self._experts.move_to_end((layer, e))
+            self.domain.retain(entry[1])
             self.telemetry.expert_hits += 1
-            return self._experts[key][0]
-        mats = tuple(self.tensors.load_slice(f"blk.{layer}.{kind}.weight", e) for kind in _EXPERTS)
-        nbytes = sum(m.nbytes for m in mats)
-        limit = self.expert_cache_bytes
-        while self._experts and (limit is not None and self._cached_bytes() + nbytes > limit
-                                 or not self.domain.can_allocate(nbytes, Category.WEIGHTS)):  # fmt: skip
-            _, (_, block) = self._experts.popitem(last=False)
-            self.domain.free_block(block)
-        block = self.domain.allocate(nbytes, Category.WEIGHTS, f"blk.{layer}.expert{e}")
-        self._experts[key] = (mats, block)
-        self.telemetry.expert_loads += 1
+            out[e] = entry[0]
+
+        def load(e: int):
+            return tuple(self.tensors.load_slice(f"blk.{layer}.{kind}.weight", e) for kind in _EXPERTS)
+
+        for e, mats in zip(missing, self._pool.map(load, missing)):
+            nbytes = sum(m.nbytes for m in mats)
+            self._make_room(nbytes)
+            block = self.domain.allocate(nbytes, Category.WEIGHTS, f"blk.{layer}.expert{e}", refs=1)
+            self._experts[(layer, e)] = (mats, block)
+            self.telemetry.expert_loads += 1
+            out[e] = mats
+        return out
+
+    def release(self, layer: int, experts) -> None:
+        for e in {int(e) for e in experts}:
+            self.domain.release(self._experts[(layer, e)][1])
+
+    def expert(self, layer: int, e: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """One expert (fetched and released at once; for callers outside a forward pass)."""
+        mats = self.fetch(layer, [e])[e]
+        self.release(layer, [e])
         return mats
+
+    def _make_room(self, nbytes: int) -> None:
+        limit = self.expert_cache_bytes
+        for key in list(self._experts):
+            over_limit = limit is not None and self._cached_bytes() + nbytes > limit
+            if not over_limit and self.domain.can_allocate(nbytes, Category.WEIGHTS):
+                return
+            block = self._experts[key][1]
+            if block.evictable:  # an expert in use by the current call is never evicted
+                del self._experts[key]
+                self.domain.free_block(block)
 
     def _cached_bytes(self) -> int:
         return sum(block.size for _, block in self._experts.values())
+
+    def close(self) -> None:
+        self._pool.shutdown(wait=True)

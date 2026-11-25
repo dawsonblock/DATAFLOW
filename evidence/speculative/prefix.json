@@ -1,0 +1,59 @@
+{
+ "block": 16,
+ "environment": {
+  "machine": "Linux x86_64 Intel(R) Xeon(R) Processor @ 2.10GHz (4 logical CPUs)",
+  "numpy": "2.5.3",
+  "python": "3.13.18",
+  "runtime_fingerprint": "fc529ae10f292102aba99b85f8c1b66f9e65a11e6fb47063357904fb910979b2"
+ },
+ "model": "Qwen3-0.6B-Q8_0.gguf",
+ "rows": [
+  {
+   "full_prefill_s": 4.227415808000842,
+   "max_abs_logit_diff": 0.0,
+   "question": "What is a mixture-of-experts model?",
+   "reused": 0,
+   "same_next_token": true,
+   "speedup": 1.0102338531476895,
+   "tokens": 270,
+   "with_cache_s": 4.184591315000034
+  },
+  {
+   "full_prefill_s": 3.412986280000041,
+   "max_abs_logit_diff": 0.0,
+   "question": "How does a KV cache work?",
+   "reused": 256,
+   "same_next_token": true,
+   "speedup": 3.8812224966170445,
+   "tokens": 268,
+   "with_cache_s": 0.8793585739995251
+  },
+  {
+   "full_prefill_s": 3.333890178000729,
+   "max_abs_logit_diff": 0.0,
+   "question": "Why is decoding memory-bound?",
+   "reused": 256,
+   "same_next_token": true,
+   "speedup": 11.528242850066622,
+   "tokens": 267,
+   "with_cache_s": 0.28919326400045975
+  },
+  {
+   "full_prefill_s": 3.1785548640000343,
+   "max_abs_logit_diff": 0.0,
+   "question": "What does quantisation trade away?",
+   "reused": 256,
+   "same_next_token": true,
+   "speedup": 11.210454552968752,
+   "tokens": 268,
+   "with_cache_s": 0.2835348779999549
+  }
+ ],
+ "stats": {
+  "evicted": 0,
+  "hits": 3,
+  "lookups": 4,
+  "reused_tokens": 768,
+  "stored": 1
+ }
+}

@@ -47,7 +47,7 @@ def main() -> None:
                         help="host/GPU profile every design is built on (a calibrated machine profile)")  # fmt: skip
     parser.add_argument("--trace", help="recorded routing trace for the model (replaces synthetic routing)")
     parser.add_argument("--compression", help="compression profile of real weights (measured entropy-coding ratio)")
-    parser.add_argument("--out", default="reports/v0.4/dse.json")
+    parser.add_argument("--out", default="reports/v0.5/dse.json")
     args = parser.parse_args()
 
     workload = json.loads(json.dumps(dict(DEFAULT_WORKLOAD, model=args.model)))

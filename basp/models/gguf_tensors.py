@@ -46,6 +46,28 @@ class GGUFTensors:
         self.bytes_read += data.size
         return dequantize(data, t.ggml_type, t.n_elements).reshape(self.shape(name))
 
+    def slice_nbytes(self, name: str) -> int:
+        """Stored bytes of one slice of the outermost dimension (one expert of an expert tensor)."""
+        t = self.info(name)
+        return t.nbytes // self.shape(name)[0]
+
+    def load_rows(self, name: str, rows) -> np.ndarray:
+        """Rows of a matrix (e.g. token embeddings for a few ids), reading only those rows."""
+        t = self.info(name)
+        n_rows, n_cols = self.shape(name)
+        _, block, size = GGML_TYPES[t.ggml_type]
+        if n_cols % block:
+            raise GGUFError(f"{name}: a row is not a whole number of blocks")
+        row_bytes = n_cols // block * size
+        rows = np.asarray(rows, dtype=np.int64).reshape(-1)
+        if rows.size and (rows.min() < 0 or rows.max() >= n_rows):
+            raise IndexError(f"{name}: row outside 0..{n_rows - 1}")
+        start = self.file.data_offset + t.offset
+        view = self._map[start:start + t.nbytes].reshape(n_rows, row_bytes)
+        data = view[rows]
+        self.bytes_read += data.size
+        return dequantize(data.reshape(-1), t.ggml_type, rows.size * n_cols).reshape(rows.size, n_cols)
+
     def load_slice(self, name: str, index: int) -> np.ndarray:
         """Slice ``index`` of the outermost dimension (one expert of an expert tensor)."""
         t = self.info(name)

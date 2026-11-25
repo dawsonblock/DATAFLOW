@@ -71,6 +71,13 @@ The parity receipts are bound to the runtime's source fingerprint: after changin
 rerun `verify_runtime` (the report marks older results stale). Receipts about one model never
 qualify a gate regime about another.
 
+Speculative execution (v0.5) is measured, never assumed: `python -m benchmarks.speculative_bench
+dense|moe|prefix ...` writes `evidence/speculative/*.json` (and with `moe --trace`, a recorded
+routing trace). Report slowdowns as they are; the adaptive controller exists so that speculation
+that does not pay is switched off, not hidden. Wall-clock figures from this runtime are not
+comparisons with llama.cpp or KTransformers; such a comparison needs those engines on the same
+machine.
+
 ## Development
 
 - `python -m pytest -q` (about 4 minutes) and `ruff check .` must pass before every commit.

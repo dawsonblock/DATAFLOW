@@ -24,11 +24,13 @@ PROMPT = [3, 14, 15, 92, 65, 35, 89, 79, 32, 38]
 EVAL = list(np.random.default_rng(7).integers(0, 96, 48))
 
 
+@pytest.mark.parametrize("backend", ["cpu", "torch"])
 @pytest.mark.parametrize(("moe", "weights"), [(False, "F32"), (False, "Q8_0"), (True, "F32"), (True, "Q8_0")])
-def test_runtime_matches_the_reference(tmp_path, moe, weights):
+def test_runtime_matches_the_reference(tmp_path, moe, weights, backend):
     path = tmp_path / "m.gguf"
     tiny_qwen3(path, moe=moe, weight_type=weights, seed=11)
-    r = run_parity(path, PROMPT, model_name="tiny-random", eval_tokens=EVAL, n_generate=8)
+    r = run_parity(path, PROMPT, model_name="tiny-random", eval_tokens=EVAL, n_generate=8, prefer=(backend,))
+    assert r["backend"] == ["numpy-cpu" if backend == "cpu" else "torch-cpu"]
     assert r["verdict"] == "pass", r["reasons"]
     assert r["numerical_error"] < 1e-4  # float32 on both sides: far inside the 0.002 target
     assert r["shapes_match"] and r["hidden"]["shapes_match"] and r["hidden"]["layers_compared"] == 1
@@ -39,7 +41,7 @@ def test_runtime_matches_the_reference(tmp_path, moe, weights):
     receipts = [Receipt.from_json(x) for x in r["receipts"]]
     assert {x.metric for x in receipts} == {"numerical_error", "model_quality"}
     assert all(x.level is EvidenceLevel.E3 and not x.problems() for x in receipts)
-    assert all(x.candidate == "runtime:numpy-cpu" and x.bindings["model"] == "tiny-random" for x in receipts)
+    assert all(x.candidate.startswith("runtime:") and x.bindings["model"] == "tiny-random" for x in receipts)
 
 
 def test_the_harness_fails_a_broken_runtime(tmp_path, monkeypatch):

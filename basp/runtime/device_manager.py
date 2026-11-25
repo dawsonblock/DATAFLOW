@@ -10,6 +10,7 @@ from basp.backends.execution import ExecutionBackend
 from basp.backends.ggml import GGMLBackend
 from basp.backends.metal import MetalBackend
 from basp.backends.remote import RemoteBackend
+from basp.backends.torch_cpu import torch_backend
 
 
 class DeviceManager:
@@ -18,8 +19,9 @@ class DeviceManager:
 
     @classmethod
     def discover(cls) -> DeviceManager:
-        """Every backend this release knows; only the CPU backend is implemented."""
-        return cls([CPUBackend(), CUDABackend(), MetalBackend(), GGMLBackend(), RemoteBackend()])
+        """Every backend this release knows.  Implemented: NumPy on the CPU (always) and PyTorch on
+        the CPU (when installed); CUDA, Metal, GGML and remote are declared, not implemented."""
+        return cls([CPUBackend(), torch_backend(), CUDABackend(), MetalBackend(), GGMLBackend(), RemoteBackend()])
 
     def available(self) -> list[ExecutionBackend]:
         return [b for b in self.backends.values() if b.capabilities().available]

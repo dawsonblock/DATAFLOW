@@ -38,6 +38,7 @@ class ForwardOutput:
     logits: np.ndarray  # (rows, vocab)
     experts: list[np.ndarray] = field(default_factory=list)  # per layer (T, top_k), MoE only
     router_logits: list[np.ndarray] = field(default_factory=list)
+    expert_weights: list[np.ndarray] = field(default_factory=list)  # per layer (T, top_k), MoE only
     hidden: list[np.ndarray] = field(default_factory=list)  # per layer output, if captured
 
 
@@ -53,7 +54,9 @@ class Qwen3Model:
             raise ValueError(f"token id outside the vocabulary of {c.vocab}")
         t = len(ids)
         out = ForwardOutput(np.empty(0))
-        x = run("embedding", "embedding", w["token_embd.weight"], ids)
+        self.d.telemetry.forward_calls += 1
+        self.d.telemetry.forward_rows += t
+        x = run("embedding", "embedding", w.embed, ids)
         for i in range(c.n_layers):
             p = f"blk.{i}."
             h = run("attention", "rms_norm", x, w[p + "attn_norm.weight"], eps=c.eps)
@@ -71,10 +74,18 @@ class Qwen3Model:
                 h = run("router", "rms_norm", x, w[p + "ffn_norm.weight"], eps=c.eps)
                 experts, weights, router_logits = run("router", "moe_router", h, w[p + "ffn_gate_inp.weight"],
                                                       top_k=c.top_k, normalize=c.normalize_topk)  # fmt: skip
-                y = run("experts", "moe_experts", h, experts, weights, lambda e, i=i: self.w.expert(i, e))
+                # grouped execution: each selected expert's weights are fetched once for all rows
+                selected = np.unique(experts)
+                mats = self.w.fetch(i, selected)
+                try:
+                    y = run("experts", "moe_experts", h, experts, weights, mats.__getitem__)
+                finally:
+                    self.w.release(i, selected)
+                self.d.telemetry.expert_token_pairs += experts.size
                 x = run("experts", "add", x, y)
                 out.experts.append(experts)
                 out.router_logits.append(router_logits)
+                out.expert_weights.append(weights)
             else:
                 h = run("ffn", "rms_norm", x, w[p + "ffn_norm.weight"], eps=c.eps)
                 y = run("ffn", "swiglu", h, w[p + "ffn_gate.weight"], w[p + "ffn_up.weight"], w[p + "ffn_down.weight"])

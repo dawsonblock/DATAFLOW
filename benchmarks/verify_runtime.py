@@ -36,6 +36,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--prompt", default=PROMPT)
     parser.add_argument("--generate", type=int, default=16)
     parser.add_argument("--hf-original", help="original checkpoint directory (quantisation effect, optional)")
+    parser.add_argument("--backend", choices=["numpy", "torch"], default="numpy")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
 
@@ -47,7 +48,9 @@ def main(argv: list[str] | None = None) -> int:
     tok = AutoTokenizer.from_pretrained(args.tokenizer)
     prompt = tok(args.prompt)["input_ids"]
     eval_tokens = tok(EVAL_TEXT)["input_ids"]
-    result = run_parity(args.gguf, prompt, model_name=args.model, eval_tokens=eval_tokens, n_generate=args.generate)
+    prefer = ("torch",) if args.backend == "torch" else ("cpu",)
+    result = run_parity(args.gguf, prompt, model_name=args.model, eval_tokens=eval_tokens, n_generate=args.generate,
+                        prefer=prefer)  # fmt: skip
     result["prompt_text"] = args.prompt
     result["generated_text"] = {"runtime": tok.decode(result["generation"]["runtime"]),
                                 "reference": tok.decode(result["generation"]["reference"])}  # fmt: skip

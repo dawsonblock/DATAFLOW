@@ -177,7 +177,7 @@ def test_plans_fail_before_running_when_no_backend_supports_an_operation(models)
     devices = DeviceManager.discover()
     plan = make_plan(config, devices)
     assert set(plan.assignment.values()) == {"numpy-cpu"}
-    assert set(plan.rejected) == {"cuda", "metal", "ggml", "remote"}
+    assert {"cuda", "metal", "ggml", "remote"} <= set(plan.rejected) <= {"cuda", "metal", "ggml", "remote", "torch"}
     with pytest.raises(UnsupportedOperation, match="experts.*cuda: not implemented"):
         make_plan(config, devices, overrides={"experts": "cuda"})
     cpu_only = DeviceManager([b for b in devices.backends.values() if b.capabilities().kind != "cpu"])

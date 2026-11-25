@@ -55,6 +55,17 @@ class Session:
     def step(self, token: int, *, capture: bool = False) -> ForwardOutput:
         return self._run([token], all_logits=False, capture=capture, phase="decode")
 
+    def truncate(self, position: int) -> None:
+        """Forget every token from ``position`` on (speculative tokens that were rejected).  The
+        KV entries stay in memory and are overwritten; attention never reads past the position."""
+        if not 0 <= position <= self.position:
+            raise ValueError(f"cannot truncate to {position}: the session holds {self.position} tokens")
+        self.position = position
+
+    @property
+    def capacity(self) -> int:
+        return self.kv.max_tokens
+
     def close(self) -> None:
         if not self.closed:
             self.engine.admission.finish(self.session_id)

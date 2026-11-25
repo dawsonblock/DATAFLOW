@@ -5,79 +5,103 @@ topology-aware, asynchronous dataflow layer that decides, per operation, whether
 a processor or to execute where the data already resides — and an engineering system for finding
 out, from evidence, **which architecture is best**, including "a conventional CPU/GPU system".
 
-This repository is **v0.4, Evidence-Gated Heterogeneous Execution**: the v0.3 simulator,
-scheduler, design-space explorer, calibration plan and evidence-gated decision, now with
+This repository is **v0.5, Predictive Speculative Execution** (BASP-X, phase 1). Its aim is to
+reduce the computation and memory traffic each generated token needs, rather than run the same work
+on faster hardware. On top of v0.4 (evidence receipts, physical memory domains, a verified runtime
+for real GGUF models) it adds, all measured on real models:
 
-* **evidence receipts** — every value the hardware gate uses is bound to the identities that
-  produced it (simulator source, configuration, profile, validation, machine, model weights,
-  runtime, benchmark); a stale, mislabelled or other-model receipt is rejected;
-* **physical memory domains** — shared accounting (a unified-memory Mac has one pool), admission
-  control, reference-counted eviction safety, asynchronous migration, and expert-cache policies;
-* **a physical runtime that executes real GGUF models** on the CPU (Qwen3 dense and MoE, 11 GGUF
-  weight formats), verified against Hugging Face transformers.
+* **speculative decoding** in the runtime: a small draft model (or a lookup of the context) proposes
+  several tokens and the target verifies them in one pass. Greedy output is exactly the target's;
+  sampled output follows the target's distribution. An adaptive controller picks the draft length
+  from measured acceptance and costs, and switches speculation off when it does not pay;
+* **grouped expert execution**: in a mixture-of-experts layer, every expert any verified token
+  selects is read once for all of them, with the stored bytes counted;
+* **real Qwen3-30B-A3B execution** in about 10 GB (experts and embeddings read on demand), a recorded
+  routing trace of it, and expert-prediction accuracy on that real routing;
+* a **shared-prefix KV cache** and an optional **PyTorch CPU backend** under the same parity checks.
 
-It is a Python research system that needs only NumPy (plus PyTorch and transformers to run the
-verification reference).
+It is a Python research system that needs only NumPy (plus PyTorch and transformers for the
+reference and the optional backend).
 
-> **Status of the numbers.** No calibration measurement of the target machines exists yet: every
-> architecture figure is an uncalibrated simulation (E1), everything about compute-memory modules
-> is an estimate with a pessimistic–nominal–optimistic range, and routing is synthetic. The only
-> measurements (E3) are the runtime's numerical parity with transformers. The CPU runtime is not
-> GPU inference: the CUDA, Metal and GGML backends are declared and report themselves
-> unavailable. See [docs/limitations.md](docs/limitations.md).
+> **Status of the numbers.** Speculative-execution results are measurements (E3) on one 4-core CPU
+> with this runtime: speed-ups are against the runtime's own plain decoding, **not** against
+> llama.cpp or KTransformers. No calibration measurement of the target machines exists yet, so every
+> architecture figure is an uncalibrated simulation (E1), and everything about compute-memory modules
+> is an estimate with a range. Nothing here is GPU inference: the CUDA, Metal and GGML backends are
+> declared and report themselves unavailable. See [docs/limitations.md](docs/limitations.md).
+
+## Fewer weight reads per token: what was measured
+
+Report section 11, from `evidence/speculative/`:
+
+* **Reading each expert once for several tokens works on real routing.** In Qwen3-30B-A3B every token
+  selects 8 of 128 experts per layer. If 4 consecutive tokens share one pass, a layer needs 4.7
+  distinct experts per token (1.7x fewer reads); with 8 tokens, 3.6 (2.2x fewer). That is the ceiling
+  if every proposed token is accepted.
+* **Speculative decoding gets part of it.** With Qwen3-0.6B drafting 4 tokens, 58% were accepted,
+  3.0 tokens came out of each 30B pass, and expert reads fell from 384 to 300 per token (1.28x fewer),
+  with exactly the same tokens. In this dequantisation-bound runtime that was 6.0 → 4.1 s per token.
+* **A poor drafter makes it worse.** Prompt lookup (3% acceptance on that prose) *raised* expert reads
+  to 596 per token: rejected proposals still read their experts. Speculation must be switched off
+  when acceptance is low; that is the controller's job.
+* **Dense models gain only where drafting is easy and verification is cheap.** Qwen3-0.6B drafting for
+  Qwen3-1.7B: code (92–95% acceptance) 1.28–1.47x faster on the PyTorch backend, explanations 1.2x,
+  prose (34–48% acceptance) no gain. On the NumPy backend most configurations were *slower* (down to
+  0.64x): its BLAS multiplies a few rows at about four times the cost of one, so verification is not
+  cheap. Every run produced exactly the target's greedy tokens.
+* **Expert prediction on real routing:** 50% of the experts a token selects are among 8 predicted
+  ahead (frequency, recency and transitions), 68% among 16, 85% among 32.
+* **Shared prefixes:** a 256-token system prompt reused from the cache cut time to the first token
+  from about 3.3 s to 0.3–0.9 s.
+
+These say the direction works: fewer weight reads per token, with output unchanged. They do not show
+that BASP beats an optimised engine; that comparison (llama.cpp with `--n-cpu-moe`, KTransformers)
+on the same machine is the next requirement (v0.6).
 
 ## Where things stand
 
-**Hardware development: NO-GO**, and the simulation no longer leaves much doubt about the
-direction. No FPGA or RTL work has been started, by decision ([docs/roadmap.md](docs/roadmap.md)).
+**Hardware development: NO-GO**, and real routing makes the case for module hardware weaker still.
+No FPGA or RTL work has been started, by decision ([docs/roadmap.md](docs/roadmap.md)).
 
-Full report: [reports/v0.4/report.md](reports/v0.4/report.md) (machine-readable:
-[results.json](reports/v0.4/results.json), including every gate receipt; [dse.json](reports/v0.4/dse.json);
-inputs and environment: [provenance.json](reports/v0.4/provenance.json)). First workload: Qwen3-30B-A3B
-shapes at 4.5 bits per weight (16.0 GiB), single-user decoding, 12 GiB GPU.
+Full report: [reports/v0.5/report.md](reports/v0.5/report.md) (machine-readable:
+[results.json](reports/v0.5/results.json), including every gate receipt; [dse.json](reports/v0.5/dse.json);
+inputs and environment: [provenance.json](reports/v0.5/provenance.json)). First workload: Qwen3-30B-A3B
+shapes at 4.5 bits per weight (16.0 GiB), single-user decoding, 12 GiB GPU, with the model's **recorded
+routing** (v0.5; earlier reports used synthetic routing).
 
 | Architecture | tokens/s (range over estimates) | vs A, nominal / pessimistic | per dollar vs A, nominal / pessimistic |
 |---|---|---|---|
-| A Centralized (conventional CPU/GPU) | 171 | 1.00x | 1.00x |
-| B Distributed | 46 (38–59) | 0.27x / 0.22x | 0.06x / 0.01x |
-| C Pipeline | 28 (23–35) | 0.16x / 0.14x | 0.03x / 0.01x |
-| D Expert-local | 107 (90–126) | 0.62x / 0.53x | 0.12x / 0.03x |
-| E Tensor-parallel | 132 (111–153) | 0.77x / 0.65x | 0.15x / 0.04x |
-| F Adaptive hybrid | 200 (182–214) | 1.17x / 1.07x | 0.23x / 0.07x |
-| G Spatial dataflow | 110 (93–130) | 0.64x / 0.55x | 0.12x / 0.03x |
-| H Hierarchical | 210 (197–235) | 1.23x / 1.15x | 0.26x / 0.07x |
+| A Centralized (conventional CPU/GPU) | 230 | 1.00x | 1.00x |
+| B Distributed | 47 (38–59) | 0.20x / 0.16x | 0.04x / 0.01x |
+| C Pipeline | 28 (23–35) | 0.12x / 0.10x | 0.03x / 0.01x |
+| D Expert-local | 109 (92–129) | 0.48x / 0.40x | 0.09x / 0.02x |
+| E Tensor-parallel | 132 (111–153) | 0.57x / 0.48x | 0.11x / 0.03x |
+| F Adaptive hybrid | 232 (226–235) | 1.01x / 0.98x | 0.19x / 0.06x |
+| G Spatial dataflow | 113 (96–133) | 0.49x / 0.42x | 0.09x / 0.03x |
+| H Hierarchical | 235 (231–257) | 1.02x / 1.01x | 0.21x / 0.06x |
 
 What the simulation says, under its assumptions:
 
+* **Real routing helps the conventional system most.** Qwen3-30B-A3B's real expert selections are
+  more concentrated than the synthetic ones, so the 12 GiB GPU's expert cache hits more often:
+  architecture A rises from 171 to 230 tokens/s, and the best module design's advantage shrinks
+  from 1.23x to 1.02x, at about five times the price (0.21x the throughput per dollar).
 * **A bigger GPU beats every module design for this model.** The 16 GiB model fits a 32 GiB
-  (RTX 5090-class) GPU: 438 tokens/s for an estimated $3,600. That is faster than any of the 1,980
-  systems explored and cheaper than every module design. The Pareto front (speed, tokens per
-  joule, price) is entirely conventional: 12, 24 and 32 GiB GPUs.
-* **With the 12 GiB GPU, the best module design is 1.23x faster at about five times the price.**
-  That is a quarter of the throughput per dollar at nominal estimates, and 7% at the pessimistic
-  corner.
+  (RTX 5090-class) GPU: 438 tokens/s for an estimated $3,600, faster than any of the 1,980 systems
+  explored. The Pareto front (speed, tokens per joule, price) is entirely conventional.
 * **Modules help only when the model is far larger than the GPU, and never per dollar.** With a
-  12 GiB GPU: 3.2x for a 70B dense model and 3.0x for DeepSeek-V3 shapes, at 0.64x and 0.76x the
-  throughput per dollar. The gate's most favourable regime (70B, pessimistic estimates) gives 2.7x
-  throughput and 1.3x energy efficiency, but only 0.17x per dollar.
-* **Each candidate is judged on its own scaling now.** From one to four modules H scales at 32%
-  (its GPU does most of the work), E on the 70B model at 93%.
-* **Two v0.2 results were artefacts.** Module links on the local fabric were free, so the v0.2
-  front's hierarchical designs all used the cheapest link. The pessimistic price corner also
-  favoured modules. Both are fixed, and H dropped off the front.
-* **Numerics hold within tolerance** on a small random-weight model (relative error 4.5e-4,
-  identical routing and tokens). Dataflows that keep the reduction order are bit-identical; those
-  that reorder FP32 sums agree within rounding.
-* **Real weights now run, and match the reference.** The CPU runtime executes Qwen3-0.6B (Q8_0
-  GGUF) with logits within 2.8e-6 relative error of transformers on the same weights (target
-  0.002), every layer's output matching, 16 identical greedy tokens ("The capital of France is" →
-  " Paris. The capital of France is also the capital of the Republic of France.") and perplexity
-  1.000001x the reference. MoE routing matches transformers exactly on small random-weight
-  models. These receipts concern Qwen3-0.6B and do not qualify the 30B regime's gate criteria.
-* **Expert caching on a small GPU depends on capacity.** On synthetic Qwen3-30B-A3B routing, the
-  cost-aware and predictive caches (run rarely used experts on the CPU instead of migrating them)
-  are about 14% faster than LRU with a 2 GiB expert cache, while LFU and LRU win at 4 and 8 GiB
-  (report section 10; simulated, E1).
+  12 GiB GPU: 3.2x for a 70B dense model and 3.0x for DeepSeek-V3 shapes (synthetic routing for
+  those). The gate's most favourable regime (70B, pessimistic estimates) gives 2.7x throughput and
+  1.3x energy efficiency, but only 0.17x per dollar.
+* **Each candidate is judged on its own scaling.** From one to four modules H scales at 26% (its GPU
+  does most of the work), E on the 70B model at 93%.
+* **Expert caching policy matters on a small GPU** (recorded routing, simulated costs, E1): with a
+  2 GiB expert cache, valuing experts by expected reuse and running rare ones on the CPU is 1.84x
+  faster than LRU; at 4 GiB the predictive policy is 1.21x faster; at 8 GiB LRU and LFU are best.
+* **Real weights run and match the reference.** Qwen3-0.6B (Q8_0 GGUF) agrees with transformers to
+  2.8e-6 relative error (NumPy backend) and 1.8e-6 (PyTorch backend), with 16 identical greedy tokens
+  and perplexity 1.000001x; MoE routing matches exactly on small random-weight models. These receipts
+  concern Qwen3-0.6B and do not qualify the 30B regime's gate criteria.
 
 ## What you need to run
 
@@ -115,8 +139,8 @@ python -m pytest -q                              # regression suite, about five 
 python -m benchmarks.dataflow_model              # closed-form comparison of specification section 6
 python -m benchmarks.explore --budget 60 --workers 4 --out /tmp/dse.json   # a small exploration
 python -m benchmarks.run_report --quick          # every experiment, short runs, a few minutes
-python -m benchmarks.explore --budget 2000 --workers 4                     # full exploration (~25 min)
-python -m benchmarks.run_report                  # the full report -> reports/v0.4/ (~15 min)
+python -m benchmarks.explore --budget 2000 --workers 4 --trace evidence/traces/qwen3-30b-a3b.decode.json
+python -m benchmarks.run_report --trace evidence/traces/qwen3-30b-a3b.decode.json   # -> reports/v0.5/
 ```
 
 Both the exploration and the report are deterministic: on the same Python and NumPy versions
@@ -170,33 +194,39 @@ print(f"estimated {result.estimate_s * 1e6:.1f} us, simulated {result.actual_s *
 pip install -e ".[dev,verify]"     # verify: torch and transformers, the reference
 python - <<'PY'
 from basp.runtime import Engine, generate
-engine = Engine("Qwen3-0.6B-Q8_0.gguf")          # any Qwen3 / Qwen3-MoE GGUF the runtime supports
-with engine.session(64) as s:
-    print(generate(s, [785, 6722, 315, 9625, 374], 12).tokens)   # token ids in, token ids out
-print(engine.report()["plan"])                    # which backend runs what; why others were rejected
+from basp.runtime.speculative import AdaptiveController, ModelDrafter, speculative_generate
+target = Engine("Qwen3-1.7B-Q8_0.gguf", prefer=("torch", "cpu"))   # any Qwen3 / Qwen3-MoE GGUF
+draft = Engine("Qwen3-0.6B-Q8_0.gguf", prefer=("torch", "cpu"))    # same tokenizer
+prompt = [785, 6722, 315, 9625, 374]                                # token ids in, token ids out
+with target.session(64) as s:
+    print(generate(s, prompt, 12).tokens)
+with target.session(64) as s:
+    r = speculative_generate(s, ModelDrafter(draft, 64), prompt, 12, controller=AdaptiveController())
+    print(r.tokens, r.summary()["acceptance"])                     # the same tokens, fewer target passes
 PY
+python -m benchmarks.speculative_bench moe --target Qwen3-30B-A3B-Q4_K_M.gguf --draft Qwen3-0.6B-Q8_0.gguf \
+    --tokenizer <HF tokenizer dir> --out evidence/speculative/qwen3-30b-a3b.json --trace evidence/traces/qwen3-30b-a3b
 python -m benchmarks.verify_runtime --gguf Qwen3-0.6B-Q8_0.gguf --model qwen3-0.6b \
     --tokenizer <HF tokenizer dir> --out evidence/verification/qwen3-0.6b
 ```
 
-The runtime dequantises weights to float32 (about four bytes per parameter of memory), so it is a
-reference implementation for correctness, not a fast engine.
+The runtime dequantises dense weights to float32 and experts on demand, so it is a reference
+implementation for correctness and for counting what a method saves, not a fast engine.
 
-## What v0.4 adds
+## What v0.5 adds
 
 | Item | Where | Evidence |
 |---|---|---|
-| Evidence v2: receipts, metric-specific qualification, identity binding, directory manifests | `basp/evidence/` | `tests/test_v04_evidence.py`, including every adversarial case of the v0.4 plan |
-| Gate decided from receipts | `basp/experiments/gate.py` | a throughput receipt never qualifies energy; stale or other-model receipts are rejected |
-| Calibration repairs (repeats count once, per-machine verdicts, executable and weight hashes, profile fingerprints, coverage) | `basp/calibration/`, `benchmarks/run_calibration.py` | as above |
-| Memory domains, admission, migration, prefetch, expert-cache policies | `basp/memory/` | `tests/test_v04_memory.py` |
-| Unified-memory design repair | `basp/dse/hardware.py` | designs on the M2 base are now buildable |
-| Physical runtime and `ExecutionBackend` | `basp/runtime/`, `basp/backends/` | `tests/test_v04_runtime.py` |
-| GGUF tensor data and dequantisation (11 formats) | `basp/models/quants.py`, `gguf_tensors.py` | bit-identical to the reference `gguf` package |
-| Verification against transformers | `basp/verification/`, `benchmarks/verify_runtime.py`, `evidence/verification/` | real Qwen3-0.6B; tiny dense and MoE models in CI |
+| Speculative decoding (draft model, prompt lookup), exact greedy and sampling acceptance, KV rollback | `basp/runtime/speculative.py` | `tests/test_v05_speculative.py` (identical tokens; chi-square test of the sampling distribution) |
+| Adaptive draft-length controller | same | chooses `k` from measured acceptance and costs; `k = 0` when speculation does not pay |
+| Grouped expert reads with byte accounting; parallel on-demand expert dequantisation | `basp/runtime/weights.py`, `model.py` | fewer expert reads for the same tokens (tests and Qwen3-30B-A3B) |
+| Memory-lean execution of Qwen3-30B-A3B | `Engine(..., embedding="rows", expert_cache_bytes=...)` | runs in about 10 GB; coherent output |
+| Shared-prefix KV cache | `basp/runtime/prefix_cache.py` | logits match a full prefill |
+| PyTorch CPU backend (optional) | `basp/backends/torch_cpu` | passes the same transformers parity checks |
+| Measurement tool and recorded evidence | `benchmarks/speculative_bench.py`, `evidence/speculative/`, `evidence/traces/` | report section 11 |
 
-Deferred: architecture I, the native C++/CUDA/Metal engine, a real MoE model end to end
-([docs/roadmap.md](docs/roadmap.md)). v0.3 and earlier: [docs/architecture.md](docs/architecture.md).
+v0.4 (evidence receipts, memory domains, the verified runtime) and earlier:
+[docs/roadmap.md](docs/roadmap.md), [docs/architecture.md](docs/architecture.md).
 
 ## Repository layout
 
@@ -220,14 +250,16 @@ basp/
                 parametric hardware designs with cost and estimate corners
   calibration/  measurement store with enforced calibration/validation split, fits, validation
   models/       GGUF headers, tensor data, dequantisation, writer for test models
-  runtime/      the physical runtime: device manager, plans, dispatcher, sessions, Qwen3 model, generation
+  runtime/      the physical runtime: device manager, plans, dispatcher, sessions, Qwen3 model, generation,
+                speculative decoding, prefix cache
   evidence/     evidence levels, identities, receipts, qualification, provenance
   experiments/  architectures, investigations, suites, exploration, calibration glue, gate, reports
 benchmarks/     command-line entry points (report, exploration, profiling, calibration, traces)
 configs/        hardware profiles, design estimates and gate thresholds (assumptions, labelled)
-reports/v0.4/   the generated report, its results (with receipts), provenance and the exploration data
-reports/v0.1/ to reports/v0.3/   earlier reports, kept as records (superseded)
-evidence/       verification/ (runtime parity); <machine>/ measurements (created by run_calibration)
+reports/v0.5/   the generated report, its results (with receipts), provenance and the exploration data
+reports/v0.1/ to reports/v0.4/   earlier reports, kept as records (superseded)
+evidence/       verification/ (runtime parity), speculative/ (speculative execution), traces/ (recorded
+                routing); <machine>/ measurements (created by run_calibration)
 tests/          regression suite
 docs/           architecture, calibration, limitations, roadmap
 ```
@@ -242,11 +274,12 @@ declarations that refuse every call.
 |---|---|---|
 | v0.1–v0.2 | Dataflow engine; architecture discovery | Done, simulated |
 | v0.3 | Repair and evidence infrastructure | Done |
-| v0.4 | Evidence receipts, memory domains, a verified runtime for real GGUF models | **Done for the CPU** (this release) |
+| v0.4 | Evidence receipts, memory domains, a verified runtime for real GGUF models | Done for the CPU |
+| v0.5 | Speculative execution and grouped expert reads, measured on real models | **Done on the CPU** (this release) |
 | Calibration | Held-out validation on the calibration machines | **Ready to run**; nothing measured |
-| v0.5 | Native CPU, CUDA and Metal backends behind the same contract and parity harness | Not started |
-| v0.6 | Adaptive expert placement on real hardware, measured against llama.cpp | Components in place |
-| v0.7 | Architecture I; distributed execution | Not started |
+| v0.6 | Native CPU/CUDA/Metal backends; llama.cpp and KTransformers measured on the same machine | Not started |
+| v0.7 | Adaptive expert placement on real hardware, measured against llama.cpp | Components in place |
+| v0.8 | Architecture I; distributed execution | Not started |
 | v0.9–v1.0 | Accelerator RTL, FPGA prototype | Blocked on the gate |
 
 ## License

@@ -26,6 +26,7 @@ from .reference_runtime import load_reference, reference_forward
 from .routing import compare_routing
 
 RUNTIME_SOURCES = ("runtime", "backends/execution.py", "backends/cpu/backend.py", "backends/cpu/kernels.py",
+                   "backends/torch_cpu",
                    "models/quants.py", "models/gguf.py", "models/gguf_tensors.py", "memory/domains.py")  # fmt: skip
 
 
@@ -51,7 +52,8 @@ def machine_identity() -> str:
 
 
 def run_parity(path: str | os.PathLike, prompt: list[int], *, model_name: str, eval_tokens: list[int] | None = None,
-               n_generate: int = 16, thresholds: dict[str, float] | None = None) -> dict[str, Any]:  # fmt: skip
+               n_generate: int = 16, thresholds: dict[str, float] | None = None,
+               prefer: tuple[str, ...] = ("cpu",)) -> dict[str, Any]:  # fmt: skip
     from basp.experiments.profiles import load_json
     from basp.runtime import Engine, generate
 
@@ -59,7 +61,7 @@ def run_parity(path: str | os.PathLike, prompt: list[int], *, model_name: str, e
     max_rel = float(gate["numeric_rel_l2_max"])
     max_ppl = float(gate["model_quality_relative_perplexity_max"])
     start = time.perf_counter()
-    engine = Engine(path)
+    engine = Engine(path, prefer=prefer)
     reference, config = load_reference(path)
     result: dict[str, Any] = {"model": model_name, "file": file_identity(path), "config": config.__dict__,
                               "prompt_tokens": len(prompt), "thresholds": {"rel_l2_max": max_rel,
@@ -108,6 +110,7 @@ def run_parity(path: str | os.PathLike, prompt: list[int], *, model_name: str, e
     result["seconds"] = time.perf_counter() - start
     result["telemetry"] = engine.telemetry.to_json()
     result["runtime_fingerprint"] = runtime_fingerprint()
+    result["backend"] = sorted(set(engine.plan.assignment.values()))
     result["receipts"] = [r.to_json() for r in parity_receipts(result, model_name=model_name)]
     return result
 
@@ -126,10 +129,11 @@ def parity_receipts(result: dict[str, Any], *, model_name: str) -> list[Receipt]
                                           "reference": f"transformers {transformers.__version__}, "
                                                        f"torch {torch.__version__}, float32"})}  # fmt: skip
     regime = f"{model_name}, float32 CPU execution, parity with the transformers reference"
-    out = [Receipt("numerical_error", float(result["numerical_error"]), EvidenceLevel.E3, "runtime:numpy-cpu",
+    candidate = "runtime:" + "+".join(result.get("backend", ["numpy-cpu"]))
+    out = [Receipt("numerical_error", float(result["numerical_error"]), EvidenceLevel.E3, candidate,
                    regime, "transformers", bindings, note="max relative L2 of logits, prompt and decode")]  # fmt: skip
     if "perplexity" in result:
         out.append(Receipt("model_quality", float(result["perplexity"]["relative"]), EvidenceLevel.E3,
-                           "runtime:numpy-cpu", regime, "transformers", bindings,
+                           candidate, regime, "transformers", bindings,
                            note="perplexity relative to the reference on the same weights"))  # fmt: skip
     return out

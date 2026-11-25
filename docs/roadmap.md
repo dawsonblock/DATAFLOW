@@ -31,9 +31,10 @@ hardware decision, because runtime measurements are what make that decision cred
 | v0.3 | Repair and evidence infrastructure | Trustworthy, reproducible results; missing or stale evidence cannot produce GO | **Done** |
 | v0.4 | Evidence-gated heterogeneous execution foundation | Receipt-based evidence; physical memory domains; a runtime that executes real GGUF models and is verified against a reference | **Done for the CPU** (below); calibration still unmeasured |
 | Calibration | Held-out prediction error within thresholds on the calibration machines | `benchmarks.run_calibration` on each machine | **Ready to run**; nothing measured (needs the machines) |
-| v0.5 | Native execution backends | C++ CPU (SIMD), CUDA and Metal/GGML backends behind `ExecutionBackend`, passing the same parity harness | Not started (declared, unavailable stubs) |
-| v0.6 | Adaptive memory and expert management on real hardware | Measured improvement over a tuned llama.cpp (incl. `--n-cpu-moe`) on the same machine | Components in place (memory domains, cache policies); not measured |
-| v0.7 | Architecture I and distributed execution | Adaptive hierarchical execution with cost `C(p) = T + λE + μR + γU`, measured against H and E | Not started (deferred from v0.4) |
+| v0.5 | Predictive speculative execution (BASP-X, phase 1): fewer weight reads per token | Speculative decoding exact in greedy and in distribution; grouped expert reads measured on a real MoE model | **Done on the CPU** (below): measured, not yet against llama.cpp or KTransformers |
+| v0.6 | Native execution backends and a competitive baseline | C++ CPU (SIMD), CUDA and Metal/GGML backends behind `ExecutionBackend`, passing the same parity harness; llama.cpp and KTransformers measured on the same machine | Not started (declared, unavailable stubs) |
+| v0.7 | Adaptive memory and expert management on real hardware | Measured improvement over a tuned llama.cpp (incl. `--n-cpu-moe`) on the same machine | Components in place (memory domains, cache policies, prediction measured on real routing) |
+| v0.8 | Architecture I and distributed execution | Adaptive hierarchical execution with cost `C(p) = T + λE + μR + γU`, measured against H and E; remote machines only for whole requests or resident expert groups | Not started (deferred from v0.4) |
 | v0.9 | Conditional accelerator RTL | Synthesis and formal verification of a quantised matrix-vector unit | Blocked on the gate |
 | v1.0 | Validated inference product | Reproducible hardware benchmarks | Blocked on the gate |
 
@@ -48,6 +49,31 @@ hardware decision, because runtime measurements are what make that decision cred
 
 Results on existing GPUs are never presented as measurements of hypothetical modules: before a
 prototype exists, module claims are at most E2. Every gate criterion states its required level.
+
+## Release v0.5 — Predictive Speculative Execution (BASP-X, phase 1)
+
+The aim changes from executing the same work on faster hardware to **doing less work per token**:
+read each expert's weights once for several tokens, and only when the tokens they serve are likely
+to be kept. Everything below was measured on the verification machine (four CPU cores, NumPy and
+PyTorch kernels); figures are in report section 11 and `evidence/speculative/`.
+
+| Item | Where | Result (E3, this machine) |
+|---|---|---|
+| Speculative decoding: draft model or prompt lookup proposes, the target verifies `k + 1` rows in one pass; greedy acceptance (exact tokens) and rejection sampling (exact distribution); KV rollback | `basp/runtime/speculative.py` | every greedy run on real models produced exactly the target's tokens; sampling passes a chi-square test against the target's distribution |
+| Adaptive controller: chooses `k` per round from measured acceptance and measured draft and verify costs; `k = 0` is plain decoding | same | backs off where speculation does not pay |
+| Grouped expert execution: each layer fetches the union of its rows' experts once, dequantising in parallel; stored bytes counted | `basp/runtime/weights.py`, `model.py` | Qwen3-30B-A3B real routing: 8.0 distinct experts per layer per token alone, 4.7 when 4 tokens share a pass, 3.6 for 8 (up to 2.2x fewer reads) |
+| Speculative decoding on Qwen3-30B-A3B (0.6B drafter, k = 4) | `benchmarks/speculative_bench.py` | 58% acceptance, 3.0 tokens per pass, 1.28x fewer expert reads per token; prompt lookup (3% acceptance) *increased* reads to 0.64x: rejected proposals still read experts |
+| Expert prediction on real routing | `basp/scheduler/predictor.py` evaluated on the recorded trace | 50% of the selected experts are among 8 predicted, 69% among 16, 85% among 32 |
+| Real routing trace of Qwen3-30B-A3B in the simulator's format | `evidence/traces/` | replaces synthetic routing in the exploration and the report |
+| Memory-lean execution of a 30B MoE model (embedding rows on demand, experts on demand) | `WeightStore(embedding="rows")` | runs in about 10 GB on a 15 GB machine |
+| Shared-prefix KV cache | `basp/runtime/prefix_cache.py` | see report section 11 |
+| PyTorch CPU backend (optional) behind the same contract, verified by the same harness | `basp/backends/torch_cpu` | needed because NumPy's BLAS makes multi-row verification cost about 4x a single row |
+
+Not done in v0.5, and why: a native C++/SIMD/CUDA engine (v0.6); comparison with llama.cpp or
+KTransformers (they must run on the same machine, and building them was not possible in the
+development container); mixed-precision quantisation with quality testing (needs its own
+sensitivity study and held-out evaluation; deferred rather than guessed); drafting by the target's
+own early layers or a learned expert predictor; overlap of prefetching with computation.
 
 ## Release v0.4 — Evidence-Gated Heterogeneous Execution
 

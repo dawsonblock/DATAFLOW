@@ -79,7 +79,7 @@ def test_provenance_detects_changed_configs_inputs_and_parameters(tmp_path):
 
 # -- audit defect A: calibration rows carry their machine; the report can use them -------------------
 def test_scored_rows_name_their_machine_and_the_report_finds_validated_profiles(tmp_path):
-    from basp.experiments.report_v4 import validated_profiles
+    from basp.experiments.report_v5 import validated_profiles
 
     ms = [Measurement(id=f"v{i}", machine=MACHINE, split="validation", kind="decode", model="qwen3-8b",
                       tokens_per_s=10.0, n_gpu_layers=4 * i) for i in range(3)]  # fmt: skip
