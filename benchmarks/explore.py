@@ -14,11 +14,13 @@ from __future__ import annotations
 import argparse
 import functools
 import json
+import multiprocessing
 import time
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 from basp.dse.search import evolutionary, search
+from basp.evidence import provenance
 from basp.experiments.explore import (
     DEFAULT_WORKLOAD,
     OBJECTIVES,
@@ -27,6 +29,7 @@ from basp.experiments.explore import (
     evaluate_design,
     seed_designs,
 )
+from basp.experiments.variants import load_compression_profile
 from basp.workloads.zoo import MODELS
 
 
@@ -40,10 +43,16 @@ def main() -> None:
     parser.add_argument("--model", default=DEFAULT_WORKLOAD["model"], choices=sorted(MODELS))
     parser.add_argument("--base-profile", default="desktop_gpu12",
                         help="host/GPU profile every design is built on (a calibrated machine profile)")  # fmt: skip
-    parser.add_argument("--out", default="reports/v0.2/dse.json")
+    parser.add_argument("--trace", help="recorded routing trace for the model (replaces synthetic routing)")
+    parser.add_argument("--compression", help="compression profile of real weights (measured entropy-coding ratio)")
+    parser.add_argument("--out", default="reports/v0.3/dse.json")
     args = parser.parse_args()
 
-    workload = dict(DEFAULT_WORKLOAD, model=args.model)
+    workload = json.loads(json.dumps(dict(DEFAULT_WORKLOAD, model=args.model)))
+    if args.trace:
+        workload["trace"]["path"] = args.trace
+    if args.compression:
+        workload["formats"] = {f.name: b for f, b in load_compression_profile(args.compression).items()}
     spec = MODELS[args.model]
     space = design_space(spec.bytes_at() / 2**30)
     evaluate = functools.partial(evaluate_design, workload=workload, base_profile=args.base_profile)
@@ -61,7 +70,9 @@ def main() -> None:
                       seed=args.seed, **({} if args.method == "bayesian" else {"map_fn": map_fn}))  # fmt: skip
 
     if args.workers > 1 and args.method != "bayesian":
-        with ProcessPoolExecutor(args.workers) as pool:
+        # forkserver: no fork of a multi-threaded parent (deprecated since Python 3.12)
+        start = "forkserver" if "forkserver" in multiprocessing.get_all_start_methods() else "spawn"
+        with ProcessPoolExecutor(args.workers, mp_context=multiprocessing.get_context(start)) as pool:
             result = run(functools.partial(pool.map, chunksize=1))
             corners = list(pool.map(corners_of, [e.config for e in result.front]))
     else:
@@ -73,6 +84,11 @@ def main() -> None:
                  "are estimates, not measurements.",
         "workload": workload,
         "base_profile": args.base_profile,
+        "provenance": {**provenance(configs=[args.base_profile, "design_estimates"],
+                                    inputs={"trace": args.trace},
+                                    parameters=(params := {"method": args.method, "budget": args.budget,
+                                                           "seed": args.seed, "workload": workload})),
+                       "parameters_value": params},
         "method": result.method,
         "seed": args.seed,
         "space_size": space.size,

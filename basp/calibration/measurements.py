@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import math
 from collections.abc import Iterable, Iterator
-from dataclasses import asdict, dataclass, fields
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Any
 
@@ -31,8 +31,13 @@ class Measurement:
     """One measured throughput figure.
 
     ``n_gpu_layers`` follows llama.cpp ``-ngl``: the number of layers offloaded to the GPU, with
-    ``-1`` meaning all of them.  ``tokens_per_s`` is generated tokens per second for ``decode``
-    and ``batched`` (aggregate over the batch) and prompt tokens per second for ``prefill``.
+    ``-1`` meaning all of them; ``n_cpu_moe`` follows ``--n-cpu-moe``: the expert weights of the
+    first N layers stay on the CPU.  ``tokens_per_s`` is generated tokens per second for
+    ``decode`` and ``batched`` (aggregate over the batch) and prompt tokens per second for
+    ``prefill``.  ``context_len`` is the KV-cache length the measured tokens see: for ``decode``
+    the average over the generated tokens, for ``prefill`` the depth before the prompt (the
+    prompt's own tokens come on top).  ``provenance`` records where the number came from (tool
+    build, model file fingerprint, plan) and never affects comparisons.
     """
 
     id: str
@@ -49,6 +54,8 @@ class Measurement:
     stddev_tokens_per_s: float = 0.0
     source: str = ""
     notes: str = ""
+    n_cpu_moe: int = 0
+    provenance: dict = field(default_factory=dict, compare=False, hash=False)
 
     def __post_init__(self) -> None:
         for name in ("id", "machine", "model"):
@@ -69,6 +76,10 @@ class Measurement:
                              f"got {self.bits_per_weight!r}")  # fmt: skip
         if self.n_gpu_layers < -1:
             raise ValueError(f"{where}: n_gpu_layers must be >= -1 (-1 = all layers)")
+        if self.n_cpu_moe < 0:
+            raise ValueError(f"{where}: n_cpu_moe must be >= 0")
+        if not isinstance(self.provenance, dict):
+            raise TypeError(f"{where}: provenance must be a mapping")
         if self.context_len < 0 or self.threads < 0:
             raise ValueError(f"{where}: context_len and threads must be >= 0")
         if self.batch < 1:
@@ -80,7 +91,7 @@ class Measurement:
     def signature(self) -> tuple:
         """Identity of the benchmark itself, independent of when or how often it was run."""
         return (self.machine, self.kind, self.model, self.bits_per_weight, self.n_gpu_layers,
-                self.context_len, self.batch, self.threads)  # fmt: skip
+                self.n_cpu_moe, self.context_len, self.batch, self.threads)  # fmt: skip
 
     def to_json(self) -> dict[str, Any]:
         return asdict(self)

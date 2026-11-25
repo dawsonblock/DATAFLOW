@@ -17,6 +17,7 @@ serialise to plain JSON, so router decisions recorded from a real model can repl
 from __future__ import annotations
 
 import json
+import math
 import numbers
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -104,6 +105,8 @@ class RoutingTrace:
                             f"{where} row {row}: expert id outside [0, {self.n_experts})")
                     if len(set(ids)) != self.top_k:
                         raise ValueError(f"{where} row {row}: duplicate expert ids {ids}")
+                    if not all(isinstance(c, numbers.Real) and math.isfinite(c) for c in co):
+                        raise ValueError(f"{where} row {row}: coefficients must be finite numbers")
                     if min(co) < 0 or abs(sum(co) - 1.0) > _COEFF_TOL:
                         raise ValueError(
                             f"{where} row {row}: coefficients must be >= 0 and sum to 1")

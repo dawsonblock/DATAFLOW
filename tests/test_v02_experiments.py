@@ -6,7 +6,6 @@ from __future__ import annotations
 import json
 from dataclasses import replace
 
-import numpy as np
 import pytest
 
 from basp.backends.cpu import NumericPayload
@@ -18,7 +17,6 @@ from basp.dse.search import search
 from basp.experiments import explore
 from basp.experiments.architectures import ARCHITECTURES, ArchitectureError, configure
 from basp.experiments.calibrate import calibration_status, predict
-from basp.experiments.gate import evaluate_gate
 from basp.experiments.profiles import load_json, load_topology
 from basp.experiments.suite import REPLICAS, default_design
 from basp.experiments.variants import (
@@ -135,7 +133,13 @@ def test_cost_model_charges_for_what_a_design_contains():
     conventional = HardwareDesign(modules=0)
     assert conventional.cost_usd(ESTIMATES) == pytest.approx(800 + 64 * 3 + 700)
     assert HardwareDesign(gpu_gib=24).cost_usd(ESTIMATES) == pytest.approx(800 + 192 + 1800)
-    assert HardwareDesign(gpu_gib=48).cost_usd(ESTIMATES) == pytest.approx(800 + 192 + 1800 + 24 * 90)
+    assert HardwareDesign(gpu_gib=32).cost_usd(ESTIMATES) == pytest.approx(800 + 192 + 2600)
+    with pytest.raises(DesignError, match="no 20 GiB GPU class"):
+        HardwareDesign(gpu_gib=20).cost_usd(ESTIMATES)
+    # the pessimistic corner is the one least favourable to modules: cheap host and GPU
+    assert conventional.cost_usd(ESTIMATES, "pessimistic") < conventional.cost_usd(ESTIMATES, "optimistic")
+    four_p, four_o = (HardwareDesign(modules=4).cost_usd(ESTIMATES, c) for c in ("pessimistic", "optimistic"))
+    assert four_p > four_o
     four = HardwareDesign(modules=4)
     module = 600 + 1024 * 0.5 + 32 * 3.5 + 16 * 6
     # a GPU and four 8-lane modules need more PCIe lanes than a desktop board has
@@ -303,11 +307,11 @@ TINY_WORKLOAD = {"model": "tiny", "tokens": 3, "warmup_tokens": 1, "context_len"
 def test_design_space_contains_only_meaningful_candidates():
     model_gib = MODELS["qwen3-30b-a3b"].bytes_at() / GiB
     space = explore.design_space(model_gib)
-    assert space.size == 8 * 3 * 4 * 3 * 3 * 4 * 3 * 2
+    assert space.size == 8 * 4 * 4 * 3 * 3 * 4 * 3 * 2
     designs = list(space.enumerate())
-    assert len(designs) == 8030
+    assert len(designs) == 10_803
     by_arch = {arch: [d for d in designs if d["arch"] == arch] for arch in "ABCDEFGH"}
-    assert len(by_arch["A"]) == 2  # one point per GPU size: module parameters mean nothing there
+    assert len(by_arch["A"]) == 3  # one point per GPU class: module parameters mean nothing there
     assert all(d["modules"] == 0 and d["gpu_gib"] > 0 for d in by_arch["A"])
     assert all(d["gpu_gib"] == 0 for d in by_arch["B"] + by_arch["C"])  # never pay for an unused GPU
     assert all(d["gpu_gib"] > 0 for d in by_arch["F"] + by_arch["H"])
@@ -327,7 +331,7 @@ def test_seed_designs_cover_the_baseline_and_every_architecture():
     assert all(space.feasible(s) for s in seeds)
     assert len({space.key(s) for s in seeds}) == len(seeds)
     assert {s["arch"] for s in seeds} == set("ABCDEFGH")
-    assert sorted(s["gpu_gib"] for s in seeds if s["arch"] == "A") == [12, 24]
+    assert sorted(s["gpu_gib"] for s in seeds if s["arch"] == "A") == [12, 24, 32]
     design = explore.to_design({"arch": "H", "gpu_gib": 12, "modules": 4, "module_gib": 32,
                                 "channels": 2, "lanes": 512, "link_gbps": 8.0, "replicas": 2})  # fmt: skip
     assert design.fabric == "local" and not design.persistent and design.lanes == 512
@@ -402,10 +406,16 @@ def test_prediction_follows_the_benchmark_description():
     assert predict(measurement(0, model="llama-3.3-70b", n_gpu_layers=-1)) is None
     m2 = predict(measurement(0, machine="macbook-m2", n_gpu_layers=-1))
     assert m2 is not None and m2 > 0
-    prefill = predict(measurement(0, kind="prefill", batch=64, n_gpu_layers=-1))
-    assert prefill > speeds[5]  # prompt tokens per second: the prompt is processed together
-    assert predict(measurement(0, kind="prefill", context_len=64, n_gpu_layers=-1)) == prefill
-    assert predict(measurement(0, kind="prefill", batch=256, n_gpu_layers=-1)) > prefill
+    prefill = predict(measurement(0, kind="prefill", batch=512, n_gpu_layers=-1))
+    assert prefill > 10 * speeds[5]  # prompt tokens per second: the prompt is processed together
+    assert predict(measurement(0, kind="prefill", n_gpu_layers=-1)) == prefill  # llama-bench's 512
+    # a prompt after 4096 tokens of context attends to more and reads a larger cache
+    assert predict(measurement(0, kind="prefill", batch=512, context_len=4096, n_gpu_layers=-1)) < prefill
+    decode_deep = predict(measurement(0, n_gpu_layers=-1, context_len=4096 + 64))
+    assert decode_deep < speeds[5]
+    # experts of the first layers kept on the CPU (llama.cpp --n-cpu-moe): slower than all on the GPU
+    moe = [predict(measurement(0, model="qwen3-30b-a3b", n_gpu_layers=99, n_cpu_moe=n)) for n in (24, 36, 48)]
+    assert moe == sorted(moe, reverse=True) and all(v is not None for v in moe)
     custom = predict(measurement(0, machine="lab"), {"lab": load_topology("desktop_gpu12")})
     assert custom is not None and custom > 0
 
@@ -424,7 +434,7 @@ def test_calibration_verdict_depends_only_on_held_out_measurements(tmp_path):
     exact = calibration_status(write(lambda i: 1.0))
     assert exact.status == "pass" and exact.validation.n == 9 and exact.validation.median < 1e-9
     assert calibration_status(write(lambda i: 1.3)).status == "fail"  # 30% off everywhere
-    assert calibration_status(write(lambda i: 1.25 if i < 2 else 1.0)).status == "fail"  # p95 too large
+    assert calibration_status(write(lambda i: 1.3 if i < 2 else 1.0)).status == "fail"  # p95 too large
     assert calibration_status(write(lambda i: 1.05)).status == "pass"
     few = calibration_status(write(lambda i: 1.0, n=5))
     assert few.status == "not_evaluated" and few.validation.n == 5
@@ -435,169 +445,6 @@ def test_calibration_verdict_depends_only_on_held_out_measurements(tmp_path):
     mixed = calibration_status(write(lambda i: 1.0, extra=wrong))
     assert mixed.status == "pass" and mixed.calibration.median > 0.5  # reported, but not decisive
     json.dumps(exact.to_json())
-
-
-# -- the hardware gate ----------------------------------------------------------------------------------
-THRESHOLDS = load_json("hardware_gate")
-
-
-def gate(calibration, **kw):
-    args = {"throughput_ratio": 2.5, "energy_ratio": 2.2, "cost_efficiency_ratio": 2.1,
-            "scaling_efficiency": 0.75, "plans_per_batch": 40.0, "batch_time_s": 2e-3,
-            "numeric_rel_error": 5e-4, "real_weights_verified": True}  # fmt: skip
-    args.update(kw)
-    return evaluate_gate("test regime", THRESHOLDS, calibration=calibration, **args)
-
-
-@pytest.fixture(scope="module")
-def calibrations(tmp_path_factory):
-    path = tmp_path_factory.mktemp("gate") / "m.json"
-    MeasurementSet([measurement(i, predict(measurement(i))) for i in range(8)]).save(path)
-    return {"pass": calibration_status(path), "none": calibration_status(None)}
-
-
-def test_gate_opens_only_when_every_criterion_passes_on_calibrated_evidence(calibrations):
-    decision = gate(calibrations["pass"])
-    assert decision.go and decision.verdict == "GO" and decision.blockers == []
-    assert len(decision.criteria) == 8
-    assert {c.evidence for c in decision.criteria[1:4]} == {"simulated, calibrated"}
-    # the same favourable simulation without measurements is not a pass
-    uncalibrated = gate(calibrations["none"])
-    assert not uncalibrated.go and uncalibrated.verdict == "NO-GO (0 criteria failed, 1 not evaluated)"
-    assert {c.evidence for c in uncalibrated.criteria[1:4]} == {"simulated, uncalibrated"}
-    assert uncalibrated.blockers[0].startswith("Simulator calibration error: 0 validation measurements")
-    for name, change in (("Throughput", {"throughput_ratio": 1.99}), ("Energy", {"energy_ratio": 0.9}),
-                         ("Cost", {"cost_efficiency_ratio": 0.5}), ("Four-module", {"scaling_efficiency": 0.69}),
-                         ("Numerical", {"numeric_rel_error": 0.01})):  # fmt: skip
-        failed = gate(calibrations["pass"], **change)
-        assert not failed.go and failed.verdict == "NO-GO (1 criterion failed, 0 not evaluated)"
-        assert len(failed.blockers) == 1 and failed.blockers[0].startswith(name)
-
-
-def test_gate_counts_missing_evidence_against_the_decision(calibrations):
-    for change in ({"throughput_ratio": None}, {"energy_ratio": float("nan")},
-                   {"scaling_efficiency": None}, {"plans_per_batch": None},
-                   {"numeric_rel_error": None}, {"real_weights_verified": False}):  # fmt: skip
-        decision = gate(calibrations["pass"], **change)
-        assert not decision.go and "1 not evaluated" in decision.verdict
-    partial = gate(calibrations["pass"], real_weights_verified=False)
-    assert "real model weights not verified" in partial.blockers[0]
-
-
-def test_scheduler_overhead_is_judged_over_the_whole_cost_range(calibrations):
-    def overhead(plans):
-        return next(c for c in gate(calibrations["pass"], plans_per_batch=plans).criteria
-                    if c.name == "Scheduler overhead")  # fmt: skip
-
-    # 2 ms batches; one plan evaluation is assumed to cost between 50 ns and 1 us
-    assert overhead(40).status == "pass"  # 0.1% to 2%
-    assert overhead(400).status == "not_evaluated"  # 1% to 20%: depends on the implementation
-    assert overhead(4000).status == "fail"  # 10% at best
-    assert "needs <= 250 ns per evaluation" in overhead(400).result
-    report = gate(calibrations["none"], candidate="E", scaling_of="D with 2 replicas").to_json()
-    assert report["go"] is False and report["regime"] == "test regime"
-    assert "(D with 2 replicas)" in report["criteria"][4]["result"]
-    assert "pessimistic estimates" in report["criteria"][1]["result"]
-    json.dumps(report)
-
-
-def test_numpy_scalars_do_not_leak_into_gate_reports(calibrations):
-    decision = gate(calibrations["pass"], throughput_ratio=np.float64(2.5), scaling_efficiency=np.float64(0.8))
-    assert decision.go
-    json.dumps(decision.to_json())
-
-
-# -- fitting a machine profile ----------------------------------------------------------------------
-def synthetic_measurements(truth_scales, models=("qwen3-8b", "qwen3-4b")):
-    """What a machine whose real parameters differ from the prior would measure."""
-    from basp.core.topology import Topology
-    from basp.experiments.calibrate import _scaled
-
-    prior = load_json("i9_11900kf_rtx3080ti")
-    machine = {"i9-11900kf-3080ti": Topology.from_dict(_scaled(prior, truth_scales))}
-    out = []
-    for model in models:
-        for split, layers in (("calibration", (0, 12, 36)), ("validation", (6, 18, 24, 30))):
-            for ngl in layers:
-                m = Measurement(id=f"{model}-ngl{ngl}", machine="i9-11900kf-3080ti", split=split,
-                                kind="decode", model=model, tokens_per_s=1.0, bits_per_weight=4.85,
-                                n_gpu_layers=ngl)  # fmt: skip
-                out.append(replace(m, tokens_per_s=predict(m, machine)))
-    return prior, out
-
-
-def test_fitting_recovers_a_machine_that_differs_from_its_prior():
-    from basp.core.topology import Topology
-    from basp.experiments.calibrate import fit_profile, score
-
-    truth = {"host.compute_rate": 0.4, "host.mem_bandwidth": 0.8, "gpu.mem_bandwidth": 0.6}
-    prior, measurements = synthetic_measurements(truth)
-    before = score(MeasurementSet(measurements))
-    assert before.status == "fail" and before.validation.median > 0.2  # the prior is wrong here
-    fit = fit_profile(measurements, "i9-11900kf-3080ti", prior)
-    assert fit.used == sorted(m.id for m in measurements if m.split == "calibration")
-    assert fit.median_error_after < 0.02 < fit.median_error_before
-    # an unconstrained parameter stays at its prior; constrained ones move towards the truth
-    assert fit.scales["gpu.compute_rate"] == pytest.approx(1.0, abs=0.05)
-    assert fit.scales["gpu.mem_bandwidth"] == pytest.approx(0.6, rel=0.1)
-    host_rate = min(fit.scales["host.compute_rate"] * 60e9 / 8.19e9,  # tokens/s, arithmetic-bound
-                    fit.scales["host.mem_bandwidth"] * 36e9 / (8.19e9 * 4.85 / 8))  # memory-bound
-    assert host_rate == pytest.approx(min(0.4 * 60 / 8.19, 0.8 * 36e9 / (8.19e9 * 4.85 / 8)), rel=0.05)
-    after = score(MeasurementSet(measurements), {"i9-11900kf-3080ti": Topology.from_dict(fit.profile)})
-    assert after.status == "pass" and after.validation.n == 8 and after.validation.median < 0.05
-    record = fit.profile["_calibration"]
-    assert record["split"] == "calibration" and record["fitted_from"] == fit.used
-    assert "devices.host.compute_rate" in record["measured"]
-    assert prior["devices"][0]["compute_rate"] == 60e9  # the prior itself is untouched
-
-
-def test_the_fit_never_sees_validation_measurements():
-    from basp.experiments.calibrate import fit_profile
-
-    prior, measurements = synthetic_measurements({"host.compute_rate": 0.5}, models=("qwen3-4b",))
-    reference = fit_profile(measurements, "i9-11900kf-3080ti", prior, sweeps=1)
-    # corrupt every validation measurement: the fit must not change at all
-    corrupted = [replace(m, tokens_per_s=m.tokens_per_s * 7) if m.split == "validation" else m
-                 for m in measurements]  # fmt: skip
-    again = fit_profile(corrupted, "i9-11900kf-3080ti", prior, sweeps=1)
-    assert again.scales == reference.scales and again.used == reference.used
-    only_validation = [m for m in measurements if m.split == "validation"]
-    with pytest.raises(ValueError, match="no calibration-split measurements"):
-        fit_profile(only_validation, "i9-11900kf-3080ti", prior)
-    with pytest.raises(ValueError, match="no calibration-split measurements"):
-        fit_profile(measurements, "macbook-m2", load_json("macbook_m2"))
-    with pytest.raises(ValueError, match="cannot fit"):
-        fit_profile(measurements, "i9-11900kf-3080ti", prior, parameters=("host.idle_w",))
-
-
-def test_calibrate_command_fits_scores_and_writes_the_profile(tmp_path, capsys):
-    from benchmarks.calibrate import main
-
-    _, measurements = synthetic_measurements({"host.compute_rate": 0.5, "gpu.mem_bandwidth": 0.7},
-                                             models=("qwen3-4b", "qwen3-8b"))  # fmt: skip
-    path, fitted, report = tmp_path / "m.json", tmp_path / "profile.json", tmp_path / "report.json"
-    MeasurementSet(measurements).save(path)
-    assert main([str(path), "--machine", "i9-11900kf-3080ti", "--profile-out", str(fitted),
-                 "--report", str(report)]) == 0  # fmt: skip
-    out = capsys.readouterr().out
-    assert "6 calibration and 8 validation measurements" in out and "-> PASS" in out
-    assert "gpu.mem_bandwidth" in out and "informational" in out
-    profile = json.loads(fitted.read_text())
-    assert profile["_calibration"]["split"] == "calibration"
-    load_topology(fitted)  # the fitted profile is a loadable hardware profile
-    assert json.loads(report.read_text())["status"] == "pass"
-    # scoring the unfitted prior against the same data fails
-    assert main([str(path), "--machine", "i9-11900kf-3080ti", "--no-fit"]) == 0
-    assert "-> FAIL" in capsys.readouterr().out
-    with pytest.raises(SystemExit):
-        main([str(path), "--machine", "somebody-elses-laptop"])
-
-
-def test_gate_requires_the_comparison_to_run_on_the_validated_profile(calibrations):
-    decision = gate(calibrations["pass"], comparison_on_calibrated_profile=False)
-    assert not decision.go and decision.verdict == "NO-GO (0 criteria failed, 1 not evaluated)"
-    assert "did not run on the validated profile" in decision.blockers[0]
-    assert {c.evidence for c in decision.criteria[1:4]} == {"simulated, uncalibrated"}
 
 
 def test_base_profile_selection_changes_the_machine_under_every_design():

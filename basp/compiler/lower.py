@@ -40,7 +40,12 @@ class ModelProgram:
         head_shards: int = 1,
         expert_shards: int = 1,
         fused: bool = True,
+        prompt: bool = False,
     ) -> None:
+        """``prompt=True``: the ``batch`` rows are the tokens of *one* prompt being processed
+        together (prefill), not independent sequences: they share one KV cache, which holds
+        ``context_len`` earlier tokens plus the prompt, and each row attends to the earlier
+        tokens and to the prompt tokens before it."""
         if head_shards < 1 or expert_shards < 1:
             raise ValueError("head_shards and expert_shards must be >= 1")
         if expert_shards > 1 and not fused:
@@ -50,6 +55,8 @@ class ModelProgram:
         self.batch = batch
         self.context_len = context_len
         self.fused = fused
+        self.prompt = prompt
+        self.sequences = 1 if prompt else batch
         self.act_bytes = activation_bytes(batch * spec.hidden)
         formats = registry.formats
         fmt = spec.weight_format
@@ -60,7 +67,8 @@ class ModelProgram:
         self.expert_of: dict[int, tuple[int, int]] = {}
         #: ranges of the intermediate dimension held by each tensor-parallel shard
         self.shard_bounds = shard_bounds(spec.expert_inter, expert_shards)
-        max_ctx = context_len + max_new_tokens
+        max_ctx = context_len + (batch if prompt else 0) + max_new_tokens
+        sequences = self.sequences
         for layer in range(spec.n_layers):
             trunk = registry.add(
                 f"trunk.{layer}", TensorKind.WEIGHT, (spec.trunk_params,), DType.BYTES,
@@ -69,8 +77,8 @@ class ModelProgram:
             self.trunk_w.append(trunk.tensor_id)
             if spec.n_heads:
                 kv = registry.add(
-                    f"kv.{layer}", TensorKind.KV_CACHE, (batch, max(max_ctx, 1)), DType.FP16,
-                    max(batch * max_ctx * spec.kv_bytes_per_token_layer, 1),
+                    f"kv.{layer}", TensorKind.KV_CACHE, (sequences, max(max_ctx, 1)), DType.FP16,
+                    max(sequences * max_ctx * spec.kv_bytes_per_token_layer, 1),
                 )  # fmt: skip
                 self.kv.append(kv.tensor_id)
             row, parts_row = [], []
@@ -162,15 +170,21 @@ class ModelProgram:
 
         if s.n_heads:
             context = self.context_len + step
+            if self.prompt:
+                # one sequence: rows attend on average to half the prompt on top of the context,
+                # and the cache (context plus prompt) is read once, not once per row
+                mixed, kv_read = context + (self.batch + 1) // 2, context + self.batch
+            else:
+                mixed, kv_read = context, self.batch * context
             normed = temp("attn_norm")
             ops.append(OpNode(self._op_id(), OpCode.RMS_NORM, f"{pre}.norm1", (x,), (w,), (normed,),
                               macs=self.batch * s.hidden, batch=self.batch,
                               weight_fraction=s.hidden / s.trunk_params, pinned_device=device))  # fmt: skip
             resid = temp("resid")
             ops.append(OpNode(self._op_id(), OpCode.ATTENTION, f"{pre}.attn", (normed, x), (w,), (resid,),
-                              macs=self.batch * s.attention_macs(context), batch=self.batch,
+                              macs=self.batch * s.attention_macs(mixed), batch=self.batch,
                               weight_fraction=s.attn_params / s.trunk_params,
-                              extra_mem_bytes=self.batch * context * s.kv_bytes_per_token_layer,
+                              extra_mem_bytes=kv_read * s.kv_bytes_per_token_layer,
                               pinned_device=device, attrs={"context": context}))  # fmt: skip
         h = temp("h")
         norm_share = (s.hidden if s.n_heads else s.norm_params) / s.trunk_params

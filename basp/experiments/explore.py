@@ -16,16 +16,19 @@ from __future__ import annotations
 
 import functools
 from collections.abc import Mapping
+from dataclasses import replace
 from typing import Any
 
+from basp.core.tensor import CompressionFormat, FormatTable
 from basp.dse.hardware import CORNERS, DesignError, HardwareDesign
 from basp.dse.pareto import Objective
 from basp.dse.space import DesignSpace, Param
 from basp.experiments.architectures import ArchitectureError, configure
 from basp.experiments.profiles import load_json, load_topology
+from basp.experiments.variants import _recorded, trace_matches
 from basp.scheduler.placement import PlacementError
 from basp.scheduler.scheduler import SchedulingError
-from basp.workloads.trace import synth_trace
+from basp.workloads.trace import RoutingTrace, synth_trace
 from basp.workloads.zoo import MODELS
 
 OBJECTIVES = (
@@ -40,7 +43,7 @@ DEFAULT_WORKLOAD: dict[str, Any] = {
 }  # fmt: skip
 
 
-def design_space(model_gib: float, *, gpu_sizes=(0, 12, 24), module_counts=(0, 2, 4, 8),
+def design_space(model_gib: float, *, gpu_sizes=(0, 12, 24, 32), module_counts=(0, 2, 4, 8),
                  module_sizes=(16, 32, 64), channels=(1, 2, 4), lanes=(256, 512, 1024, 2048),
                  links=(8.0, 16.0, 32.0), host_gib: int = 64) -> DesignSpace:  # fmt: skip
     """Design space with the constraints that keep candidates physically meaningful."""
@@ -112,8 +115,17 @@ def to_design(config: Mapping[str, Any], host_gib: int = 64) -> HardwareDesign:
 
 @functools.lru_cache(maxsize=8)
 def _traces(model: str, tokens: int, zipf_s: float, stickiness: float, seed: int, prior_steps: int,
-            batch: int):  # fmt: skip
+            batch: int, path: str | None = None):  # fmt: skip
     spec = MODELS[model]
+    if path is not None:
+        recorded = RoutingTrace.load(path)
+        if not trace_matches(recorded, spec):
+            raise ValueError(f"trace {path} ({recorded.n_layers} layers, {recorded.n_experts} experts, "
+                             f"top-{recorded.top_k}) does not match {spec.name}")  # fmt: skip
+        cut = _recorded(recorded, prior_steps, tokens, batch)
+        if cut is None:
+            raise ValueError(f"trace {path} has {len(recorded.steps)} steps; {prior_steps + batch * tokens} needed")
+        return cut
     trace = synth_trace(prior_steps + tokens, spec.n_layers, spec.n_experts, spec.top_k, batch=batch,
                         zipf_s=zipf_s, stickiness=stickiness, seed=seed)  # fmt: skip
     return trace.split(prior_steps)
@@ -133,15 +145,17 @@ def evaluate_design(config: Mapping[str, Any], *, workload: Mapping[str, Any] | 
     t = workload["trace"]
     batch = int(workload.get("batch", 1))
     prior, held = _traces(workload["model"], workload["tokens"], t["zipf_s"], t["stickiness"],
-                          t["seed"], t["prior_steps"], batch)  # fmt: skip
+                          t["seed"], t["prior_steps"], batch, t.get("path"))  # fmt: skip
+    formats = {CompressionFormat[k]: float(v) for k, v in workload.get("formats", {}).items()}
     base, estimates = _base(base_profile)
     try:
         design = to_design(config, host_gib)
         topology = design.topology(base, estimates, corner)
-        setup = configure(config["arch"], topology, prior, replicas=int(config.get("replicas", 1))).build(
-            spec, prior, batch=batch, context_len=workload.get("context_len", 0),
-            max_new_tokens=workload["tokens"],
-        )  # fmt: skip
+        built = configure(config["arch"], topology, prior, replicas=int(config.get("replicas", 1)))
+        if formats:
+            built = replace(built, formats=FormatTable(formats))
+        setup = built.build(spec, prior, batch=batch, context_len=workload.get("context_len", 0),
+                            max_new_tokens=workload["tokens"])  # fmt: skip
         result = setup.run(held, tokens=workload["tokens"], warmup_tokens=workload.get("warmup_tokens", 0))
     except (PlacementError, ArchitectureError, DesignError, SchedulingError):
         return None

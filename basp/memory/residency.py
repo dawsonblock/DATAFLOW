@@ -80,6 +80,12 @@ class ResidencyMap:
         self.main: dict[int, Allocator] = {}
         self.scratch: dict[int, Allocator] = {}
         for dev in topology.devices.values():
+            owner = topology.memory_owner(dev.device_id)
+            if owner != dev.device_id and owner in self.main:
+                # unified memory: every device of the domain allocates from the same pool
+                self.scratch[dev.device_id] = self.scratch[owner]
+                self.main[dev.device_id] = self.main[owner]
+                continue
             scratch = min(int(dev.mem_capacity * scratch_fraction), scratch_max)
             scratch -= scratch % 64
             self.scratch[dev.device_id] = Allocator(max(scratch, 64))
@@ -249,13 +255,17 @@ class ResidencyMap:
 
     # -- verification -------------------------------------------------------------
     def check_invariants(self) -> None:
-        for arena in (*self.main.values(), *self.scratch.values()):
+        for arena in {id(a): a for a in (*self.main.values(), *self.scratch.values())}.values():
             arena.check_invariants()
+        groups: dict[int, list[int]] = {}
         for device in self.topology.devices:
+            groups.setdefault(self.topology.memory_owner(device), []).append(device)
+        for owner, devices in groups.items():
             tagged = sorted(
-                a.tag for arena in (self.main[device], self.scratch[device]) for a in arena.allocations()
+                a.tag for arena in (self.main[owner], self.scratch[owner]) for a in arena.allocations()
             )
-            assert tagged == sorted(self._on_device[device]), f"device {device}: allocation mismatch"
+            expected = sorted(t for d in devices for t in self._on_device[d])
+            assert tagged == expected, f"devices {devices}: allocation mismatch"
         for tensor_id, by_dev in self._copies.items():
             spec = self.registry.spec(tensor_id)
             version = self.registry.version(tensor_id)

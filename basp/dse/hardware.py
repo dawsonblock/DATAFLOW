@@ -8,7 +8,10 @@ measurements) and a table of *estimates* for everything that does not exist yet.
 
 Estimates are (pessimistic, nominal, optimistic) triples.  A design is evaluated
 at one **corner**; decisions about hypothetical hardware should hold at the
-pessimistic corner.
+pessimistic corner.  Corners are named from the point of view of the module
+proposal: at the pessimistic corner modules are slow and expensive, and the
+components every system shares (host, GPU) are fast and cheap, because that is
+what makes the conventional baseline strongest.
 """
 
 from __future__ import annotations
@@ -28,6 +31,15 @@ GiB = 1024**3
 
 class DesignError(ValueError):
     """The design is physically or logically impossible."""
+
+
+def gpu_class(estimates: Mapping[str, Any], gpu_gib: int) -> Mapping[str, Any]:
+    """The estimate entry for a GPU with ``gpu_gib`` GiB of memory."""
+    classes = estimates["gpu"]["classes"]
+    entry = classes.get(str(gpu_gib))
+    if entry is None:
+        raise DesignError(f"no {gpu_gib} GiB GPU class in the estimates; known: {sorted(classes, key=int)}")
+    return entry
 
 
 def pick(estimate: Any, corner: str) -> float:
@@ -83,13 +95,7 @@ class HardwareDesign:
         if self.pcie_lanes(estimates) > int(host["desktop_pcie_lanes"]):
             total += pick(host["workstation_surcharge_usd"], corner)
         if self.gpu_gib:
-            table = estimates["gpu"]["cost_usd_by_gib"]
-            sizes = sorted(int(k) for k in table)
-            size = next((s for s in sizes if s >= self.gpu_gib), sizes[-1])
-            total += pick(table[str(size)], corner)
-            if self.gpu_gib > sizes[-1]:
-                extra = pick(estimates["gpu"]["cost_per_gib_usd_above_24"], corner)
-                total += (self.gpu_gib - sizes[-1]) * extra
+            total += pick(gpu_class(estimates, self.gpu_gib)["cost_usd"], corner)
         total += self.modules * (
             pick(module["cost_base_usd"], corner)
             + self.lanes * pick(module["cost_per_lane_usd"], corner)
@@ -120,7 +126,13 @@ class HardwareDesign:
                 devices.append({**dev, "mem_capacity": self.host_gib * GiB})
             elif dev["kind"] == "GPU" and self.gpu_gib and gpu_name is None:
                 gpu_name = dev["name"]
+                # the base profile's GPU is the base class; other classes scale its rates
+                own, base = gpu_class(estimates, self.gpu_gib), gpu_class(estimates, estimates["gpu"]["base_class"])
+                bandwidth = pick(own["bandwidth_scale"], corner) / pick(base["bandwidth_scale"], corner)
+                compute = pick(own["compute_scale"], corner) / pick(base["compute_scale"], corner)
                 devices.append({**dev, "mem_capacity": self.gpu_gib * GiB,
+                                "mem_bandwidth": dev["mem_bandwidth"] * bandwidth,
+                                "compute_rate": dev["compute_rate"] * compute,
                                 "persistent": self.persistent or dev.get("persistent", False)})  # fmt: skip
         if len(devices) < (2 if self.gpu_gib else 1):
             raise DesignError("the base profile lacks the host or GPU this design needs")
@@ -166,7 +178,9 @@ class HardwareDesign:
                           "gate_after_s": 0.01, "wake_j": 0.05},
             }  # fmt: skip
             if hub_port == "fabric":
-                link = {**fab, "name": f"fabric-{name}", "a": "fabric"}
+                # the module's own port: its link bandwidth, capped by what a fabric port carries
+                port = min(self.link_gbps * 1e9, fab["bandwidth_ab"])
+                link = {**fab, "bandwidth_ab": port, "name": f"fabric-{name}", "a": "fabric"}
             else:
                 link = {"name": f"pcie-{name}", "a": host_name, "bandwidth_ab": self.link_gbps * 1e9,
                         "latency_s": pick(module["link_latency_s"], corner), "joules_per_byte": 6e-11}  # fmt: skip

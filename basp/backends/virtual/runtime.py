@@ -13,6 +13,7 @@ Several independent streams (concurrent requests) can share one system; a
 
 from __future__ import annotations
 
+import itertools
 import time
 from collections import Counter
 from collections.abc import Callable
@@ -390,6 +391,8 @@ class Runtime:
         self._decision_s = self.policy.decision_latency_s if host else 0.0
         self._expert_devices: dict[int, tuple[int, ...]] = {}
         self._released: set[int] = set()
+        self._live: dict[int, None] = {}  # the step's temporaries not yet released, in creation order
+        self._scanned = 0  # graph tensors already examined for temporaries
 
     # backwards-compatible views of the shared measurements
     @property
@@ -426,6 +429,8 @@ class Runtime:
         self._op_pending.clear()
         self._records.clear()
         self._released = set()
+        self._live = {}
+        self._scanned = 0
         program = self.program
         x = program.input_tensor(self.graph, step)
         self.system.residency.place(x, program.trunk_device[0], now=self.sim.now)
@@ -491,13 +496,20 @@ class Runtime:
     def _release(self, keep: set[int]) -> None:
         """Free the step's temporaries (dependency-managed lifetime) except ``keep``."""
         residency, registry = self.system.residency, self.system.registry
-        for tensor in self.program.temporaries(self.graph) + self.emitter.partials:
+        tensors = self.graph.tensors
+        if len(tensors) > self._scanned:  # only tensors created since the last release are new
+            for tensor, spec in itertools.islice(tensors.items(), self._scanned, None):
+                if spec.policy.temporary:
+                    self._live[tensor] = None
+            self._scanned = len(tensors)
+        for tensor in [*self._live, *self.emitter.partials]:
             if tensor in keep or tensor in self._released or tensor not in registry:
                 continue
             if residency.copies(tensor):
                 residency.drop(tensor)
             registry.unregister(tensor)
             self._released.add(tensor)
+            self._live.pop(tensor, None)
 
     # -- batches ------------------------------------------------------------------
     def _targets(self, layer: int, source: int) -> tuple[int, ...]:

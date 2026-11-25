@@ -50,7 +50,7 @@ def test_parse_llama_bench_separates_prefill_and_decode():
     assert prefill.n_gpu_layers == decode.n_gpu_layers == 16 and decode.threads == 8
     assert decode.bits_per_weight == 4.85 and decode.stddev_tokens_per_s == 0.4
     assert decode.source == "llama-bench abc1234" and "n_gen=128" in decode.notes
-    assert prefill.id != decode.id and decode.id.startswith("i9-3080ti/qwen3-30b-a3b/b4.85/ngl16/t8/")
+    assert prefill.id != decode.id and decode.id.startswith("i9-3080ti/qwen3-30b-a3b/b4.85/ngl16/cmoe0/t8/d0/")
     assert prefill.signature != decode.signature
     # log lines around the JSON, and a single object instead of an array, are tolerated
     wrapped = "llama_model_load: loading\n" + FIXTURE + "\nllama_perf: done\n"

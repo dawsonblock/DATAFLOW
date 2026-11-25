@@ -9,7 +9,7 @@
       "kind": "CPU",
       "mem_capacity": 68719476736,
       "mem_bandwidth": 54000000000.0,
-      "compute_rate": 80000000000.0,
+      "compute_rate": 400000000000.0,
       "kernel_startup_s": 5e-07,
       "decode_rate": {
         "INT4": "inf",
@@ -24,10 +24,10 @@
       "stream_ingest": false,
       "power": {
         "idle_w": 45.0,
-        "joules_per_mac": 2e-09,
+        "joules_per_mac": 2.5e-10,
         "joules_per_mem_byte": 1.5e-10
       },
-      "_comment": "16-core desktop CPU, 2x DDR5-5600 (89.6 GB/s theoretical x 0.6 sustained = 54 GB/s). 80 GMAC/s for INT4 kernels, set so that CPU-only decoding of dense models is limited by memory bandwidth, as is commonly reported for llama.cpp on desktop CPUs; v0.1 used 30 GMAC/s, which made the conventional baseline arithmetic-bound and too slow. Still an assumption until a machine is calibrated.",
+      "_comment": "16-core desktop CPU, 2x DDR5-5600 (89.6 GB/s theoretical x 0.6 sustained = 54 GB/s), 400 GMAC/s INT4. The arithmetic rate is the sustained rate of llama.cpp's quantised matrix-matrix kernels (prompt processing); token generation stays limited by memory bandwidth at this rate, as llama.cpp on desktop CPUs is commonly reported to be. Energy per operation is set so that full arithmetic load draws roughly the package power. v0.2 used 80 GMAC/s, which made prompt processing several times too slow. An assumption until calibrated.",
       "warm_startup_s": 5e-08
     },
     {

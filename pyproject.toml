@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "basp-dataflow"
-version = "0.2.0"
+version = "0.3.0"
 description = "BASP adaptive dataflow engine: topology-aware simulator, scheduler and low-bit reference kernels"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -12,7 +12,7 @@ license = { text = "MIT" }
 dependencies = ["numpy>=1.24"]
 
 [project.optional-dependencies]
-dev = ["pytest>=7", "ruff==0.16.9"]
+dev = ["pytest>=7", "ruff==0.16.9", "gguf>=0.10"]  # gguf: reference reader, cross-checks our header reader
 
 [tool.setuptools.packages.find]
 include = ["basp*"]

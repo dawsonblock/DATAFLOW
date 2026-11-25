@@ -1,8 +1,9 @@
-"""The v0.2 report: architecture discovery, investigations and the hardware gate.
+"""The v0.3 report: architecture discovery, investigations and the evidence-gated decision.
 
-Deterministic: the same code, profiles, estimates and seeds give byte-identical
-files.  Every performance figure is simulated; nothing here is a measurement of
-real hardware, and the simulator has not been calibrated yet (section 2).
+Deterministic: the same code, profiles, estimates, inputs and seeds give byte-identical
+``report.md`` and ``results.json`` (the software environment and git state go to
+``provenance.json``).  Every performance figure is simulated unless section 2 shows passing
+held-out measurements; claims carry evidence levels E0-E3 (``basp.evidence``).
 """
 
 from __future__ import annotations
@@ -16,12 +17,14 @@ import numpy as np
 
 from basp.backends.cpu import NumericPayload
 from basp.core.capabilities import DeviceKind
+from basp.core.tensor import CompressionFormat
 from basp.dataflow.base import ALL_MODES, CachePolicy, DataflowMode, ExecutionPolicy
 from basp.dse.hardware import CORNERS, HardwareDesign
+from basp.evidence import provenance, stale_reasons
 from basp.experiments import investigations as inv
 from basp.experiments.architectures import ARCHITECTURES
 from basp.experiments.calibrate import MACHINE_PROFILES, calibration_status, predict
-from basp.experiments.gate import GateDecision, evaluate_gate
+from basp.experiments.gate import Candidate, GateDecision, evaluate_gate
 from basp.experiments.harness import build
 from basp.experiments.profiles import load_json, load_topology
 from basp.experiments.report import table, vary_topology
@@ -30,19 +33,25 @@ from basp.experiments.suite import (
     architecture_table,
     default_design,
     model_suite,
+    suite_spec,
     workload_suite,
 )
 from basp.experiments.variants import (
+    Context,
     base_profile,
+    context,
     design_for,
+    load_compression_profile,
+    routing_source,
     run_architecture,
-    set_base_profile,
+    set_context,
     traces,
 )
 from basp.scheduler import placement
 from basp.verification import check_accounting, check_dependencies, compare_to_reference
 from basp.workloads.model import tiny_spec
 from basp.workloads.tiny import TinyModel
+from basp.workloads.trace import RoutingTrace
 from basp.workloads.zoo import MODELS, SUITE
 
 GiB = 1024**3
@@ -107,17 +116,37 @@ def correctness() -> dict[str, Any]:
     }
 
 
-def regime_ratios(key: str, bits: float = 4.5, *, candidates=("D", "E", "F", "H"),
-                  corner: str = "pessimistic", gpu_gib: int = 12) -> dict[str, Any]:  # fmt: skip
-    """Best module architecture against the conventional baseline for one model, at one corner."""
-    spec = MODELS[key]
+def candidate_scaling(arch: str, spec, prior, held, design_of, *, corner: str, tokens: int,
+                      warmup_tokens: int, context_len: int = 2048) -> dict[str, Any]:  # fmt: skip
+    """One-to-four-module scaling of ``arch`` itself, on the given model, at one corner.
+
+    ``design_of(modules, replicas)`` returns the system for a module count.  The gate accepts
+    scaling evidence only for the candidate it judges, in the regime it judges.
+    """
+    speeds = {}
+    for n in (1, 4):
+        replicas = min(REPLICAS[arch], n)
+        out = run_architecture(arch, design_of(n, replicas), spec, prior, held, tokens=tokens,
+                               warmup_tokens=warmup_tokens, context_len=context_len, replicas=replicas,
+                               corner=corner)  # fmt: skip
+        speeds[n] = out.result.tokens_per_s
+    return {"arch": arch, "tokens_per_s": speeds, "efficiency": speeds[4] / speeds[1] / 4}
+
+
+def regime_ratios(key: str, *, candidates=("D", "E", "F", "H"), corner: str = "pessimistic",
+                  gpu_gib: int = 12) -> dict[str, Any]:  # fmt: skip
+    """Best module architecture against the conventional baseline for one model, at one corner,
+    with that architecture's own scaling efficiency in the same regime."""
+    spec, bits = suite_spec(key)
     prior, held = traces(spec, tokens=4, prior_steps=8)
 
+    def design_of(arch: str):
+        return lambda n, replicas: default_design(arch, design_for(
+            spec, modules=n, bits_per_weight=bits, gpu_gib=gpu_gib, replicas=replicas))  # fmt: skip
+
     def run(arch: str):
-        design = default_design(arch, design_for(spec, bits_per_weight=bits, gpu_gib=gpu_gib,
-                                                 replicas=REPLICAS[arch]))  # fmt: skip
-        return run_architecture(arch, design, spec, prior, held, tokens=4, warmup_tokens=1,
-                                replicas=REPLICAS[arch], corner=corner)  # fmt: skip
+        return run_architecture(arch, design_of(arch)(4, REPLICAS[arch]), spec, prior, held, tokens=4,
+                                warmup_tokens=1, replicas=REPLICAS[arch], corner=corner)  # fmt: skip
 
     base = run("A")
     best, best_out = None, None
@@ -132,6 +161,8 @@ def regime_ratios(key: str, bits: float = 4.5, *, candidates=("D", "E", "F", "H"
         "cost_efficiency": best_out.per_kusd / base.per_kusd,
         "baseline_tokens_per_s": base.result.tokens_per_s,
         "candidate_tokens_per_s": best_out.result.tokens_per_s,
+        "scaling": candidate_scaling(best, spec, prior, held, design_of(best), corner=corner, tokens=4,
+                                     warmup_tokens=1),
     }
 
 
@@ -158,7 +189,9 @@ def summarise_dse(data: dict[str, Any]) -> dict[str, Any]:
         by_arch[e["config"]["arch"]].append(e)
 
     def best(items, metric):
-        return max(items, key=lambda e: (e["metrics"][metric], json.dumps(e["config"], sort_keys=True)))
+        # ties (e.g. a model that fits the GPU, so modules add nothing) go to the cheaper design
+        return max(items, key=lambda e: (round(e["metrics"][metric], 9), -e["metrics"]["cost_usd"],
+                                         json.dumps(e["config"], sort_keys=True)))  # fmt: skip
 
     per_arch = {}
     for arch in sorted(by_arch):
@@ -200,6 +233,7 @@ def summarise_dse(data: dict[str, Any]) -> dict[str, Any]:
         "equal_cost": budgets, "equal_power": powers,
         "base_profile": data.get("base_profile", "desktop_gpu12"),
         "workload": data.get("workload", {}),
+        "provenance": data.get("provenance"),
         "front_archs": {a: sum(1 for e in front if e["config"]["arch"] == a) for a in sorted(by_arch)},
     }  # fmt: skip
 
@@ -255,31 +289,64 @@ def _by_variant(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
 
 
 def render_gate(decision: GateDecision) -> str:
-    rows = [[c.name, c.threshold, c.result, c.status.replace("_", " "), c.evidence]
+    rows = [[c.name, c.threshold, c.result, c.status.replace("_", " "), c.evidence, c.required.name]
             for c in decision.criteria]  # fmt: skip
-    return table(["criterion", "threshold", "result", "status", "evidence"], rows)
+    return table(["criterion", "threshold", "result", "status", "evidence", "required"], rows)
 
 
-def build_report(*, quick: bool = False, dse_path: str | Path | None = "reports/v0.2/dse.json",
-                 measurements_path: str | Path | None = "measurements.json",
-                 base: str | None = None, progress=None) -> tuple[str, dict[str, Any]]:  # fmt: skip
-    """Run every v0.2 experiment and return (markdown, results).
+def validated_profiles(calibration) -> set[str]:
+    """Machine profiles that have validation measurements in ``calibration``."""
+    return {MACHINE_PROFILES[row["machine"]] for row in calibration.per_measurement
+            if row["split"] == "validation" and row["machine"] in MACHINE_PROFILES}  # fmt: skip
+
+
+def dse_provenance_now(dse: dict[str, Any]) -> dict[str, Any]:
+    """The provenance the stored exploration would have if it were produced now."""
+    workload = dse.get("workload", {})
+    trace = workload.get("trace", {}).get("path")
+    recorded = dse.get("provenance") or {}
+    return provenance(configs=[dse["base_profile"], "design_estimates"], inputs={"trace": trace},
+                      parameters=recorded.get("parameters_value", {}))  # fmt: skip
+
+
+def build_report(*, quick: bool = False, dse_path: str | Path | None = "reports/v0.3/dse.json",
+                 measurements_path: str | Path | None = "evidence", base: str | None = None,
+                 trace_path: str | Path | None = None, compression_path: str | Path | None = None,
+                 progress=None) -> tuple[str, dict[str, Any]]:  # fmt: skip
+    """Run every experiment and return (markdown, results).
 
     ``base`` names the host/GPU profile the comparison is built on (default: the
     illustrative desktop).  Evidence counts as calibrated only if the validation
     measurements pass *and* the comparison runs on a profile they validated.
+    ``trace_path`` (a recorded ``RoutingTrace``) replaces synthetic routing for every model it
+    matches; ``compression_path`` (from ``benchmarks.profile_compression``) replaces the assumed
+    entropy-coding ratio.
     """
-    previous = set_base_profile(base) if base else None
+    ctx = Context(
+        base_profile=base or "desktop_gpu12",
+        trace=RoutingTrace.load(trace_path) if trace_path else None,
+        trace_path=str(trace_path) if trace_path else None,
+        formats=load_compression_profile(compression_path) if compression_path else {},
+        compression_path=str(compression_path) if compression_path else None,
+    )  # fmt: skip
+    previous = set_context(ctx)
     try:
-        return _build_report(quick, dse_path, measurements_path, progress)
+        md, results = _build_report(quick, dse_path, measurements_path, progress)
     finally:
-        if previous is not None:
-            set_base_profile(previous)
+        set_context(previous)
+    inputs = {"measurements": measurements_path, "trace": trace_path, "compression": compression_path,
+              "dse": dse_path}  # fmt: skip
+    results["provenance"] = provenance(
+        configs=[ctx.base_profile, "design_estimates", "hardware_gate", *sorted(set(MACHINE_PROFILES.values()))],
+        inputs={k: v for k, v in inputs.items()}, parameters={"quick": quick},
+    )  # fmt: skip
+    return md, results
 
 
 def _build_report(quick: bool, dse_path, measurements_path, progress) -> tuple[str, dict[str, Any]]:
     done = progress or (lambda _stage: None)
     profile_name = base_profile()
+    ctx = context()
     spec = MODELS["qwen3-30b-a3b"]
     thresholds = load_json("hardware_gate")
     lab = inv.Lab(spec, tokens=4, warmup_tokens=1, prior_steps=8) if quick else inv.Lab(spec)
@@ -304,15 +371,15 @@ def _build_report(quick: bool, dse_path, measurements_path, progress) -> tuple[s
     workloads = workload_suite(spec, quick=quick)
     done("workload types")
     correct = correctness()
+    routing = routing_source(spec)
+    measured_formats = dict(ctx.formats)
     calibration = calibration_status(
         measurements_path, median_max=thresholds["calibration_median_max"],
         p95_max=thresholds["calibration_p95_max"],
         min_validation=thresholds["min_validation_measurements"],
     )  # fmt: skip
     plan = calibration_plan()
-    validated = {MACHINE_PROFILES.get(row["machine"]) for row in calibration.per_measurement
-                 if row["split"] == "validation"}  # fmt: skip
-    on_validated = profile_name in validated
+    on_validated = profile_name in validated_profiles(calibration)
     calibrated = calibration.status == "pass" and on_validated
     done("correctness and calibration")
 
@@ -320,40 +387,48 @@ def _build_report(quick: bool, dse_path, measurements_path, progress) -> tuple[s
     corner = thresholds["decision_corner"]
     challengers = [r for r in archs if r["key"] != "A"]
     primary = max(challengers, key=lambda r: (r[corner]["vs_a"]["throughput"], r["key"]))
-    e_eff = next((r["efficiency"] for r in scaling
-                  if r["architecture"].startswith("E") and r["modules"] == 4), None)  # fmt: skip
     greedy = sched[0]
     plans_per_batch = greedy["plans_per_batch"]
     batch_time = 1.0 / greedy["tokens_per_s"] / (spec.n_layers + 1)
-    common = {"calibration": calibration, "scaling_efficiency": e_eff, "plans_per_batch": plans_per_batch,
-              "batch_time_s": batch_time, "numeric_rel_error": correct["max_rel_l2"],
-              "scaling_of": "E Tensor-parallel on the 30B MoE, the best-scaling architecture",
-              "comparison_on_calibrated_profile": on_validated}  # fmt: skip
-    gate_primary = evaluate_gate(
-        f"{spec.name}, single-user decoding, 12 GiB GPU", thresholds,
-        throughput_ratio=primary[corner]["vs_a"]["throughput"],
-        energy_ratio=primary[corner]["vs_a"]["energy"],
-        cost_efficiency_ratio=primary[corner]["vs_a"]["cost_efficiency"],
-        candidate=f"{primary['key']} {primary['name']}", **common,
+    common = {"calibration": calibration, "comparison_on_calibrated_profile": on_validated,
+              "plans_per_batch": plans_per_batch, "batch_time_s": batch_time,
+              "numeric_rel_error": correct["max_rel_l2"]}  # fmt: skip
+    regime_primary = f"{spec.name}, single-user decoding, 12 GiB GPU"
+    primary_scaling = candidate_scaling(
+        primary["key"], spec, lab.prior, lab.held,
+        lambda n, replicas: default_design(primary["key"], HardwareDesign(modules=n)),
+        corner=corner, tokens=lab.tokens, warmup_tokens=lab.warmup, context_len=lab.context_len,
     )  # fmt: skip
+    gate_primary = evaluate_gate(Candidate(
+        primary["key"], primary["name"], regime_primary,
+        throughput_ratio=primary[corner]["vs_a"]["throughput"], energy_ratio=primary[corner]["vs_a"]["energy"],
+        cost_efficiency_ratio=primary[corner]["vs_a"]["cost_efficiency"],
+        scaling_efficiency=primary_scaling["efficiency"], scaling_arch=primary["key"],
+        scaling_regime=regime_primary, corner=corner,
+    ), thresholds, **common)  # fmt: skip
     # a hypothetical model shape cannot justify hardware: only published shapes are eligible
     favourable = max((m for m in models if "speedup_vs_a" in m and m["source"].startswith("published")),
                      key=lambda m: m["speedup_vs_a"])  # fmt: skip
-    ratios = regime_ratios(favourable["key"].replace("-int8", ""), favourable["bits_per_weight"],
-                           corner=corner, gpu_gib=favourable["gpu_gib"])  # fmt: skip
-    gate_best = evaluate_gate(
-        f"{favourable['model']}, single-user decoding, {favourable['gpu_gib']} GiB GPU "
-        "(most favourable regime found among published model shapes)",
-        thresholds, throughput_ratio=ratios["throughput"], energy_ratio=ratios["energy"],
-        cost_efficiency_ratio=ratios["cost_efficiency"],
-        candidate=f"{ratios['candidate']} {ARCHITECTURES[ratios['candidate']].name}", **common,
-    )  # fmt: skip
+    ratios = regime_ratios(favourable["key"], corner=corner, gpu_gib=favourable["gpu_gib"])
+    regime_best = (f"{favourable['model']}, single-user decoding, {favourable['gpu_gib']} GiB GPU "
+                   "(most favourable regime found among published model shapes)")  # fmt: skip
+    best_key = ratios["candidate"]
+    gate_best = evaluate_gate(Candidate(
+        best_key, ARCHITECTURES[best_key].name, regime_best, throughput_ratio=ratios["throughput"],
+        energy_ratio=ratios["energy"], cost_efficiency_ratio=ratios["cost_efficiency"],
+        scaling_efficiency=ratios["scaling"]["efficiency"], scaling_arch=ratios["scaling"]["arch"],
+        scaling_regime=regime_best, corner=corner,
+    ), thresholds, **common)  # fmt: skip
     done("hardware gate")
 
     dse = None
     if dse_path is not None and Path(dse_path).exists():
         dse = summarise_dse(json.loads(Path(dse_path).read_text()))
-    dse_stale = dse is not None and dse["base_profile"] != profile_name
+    dse_stale: list[str] = []
+    if dse is not None:
+        dse_stale = stale_reasons(dse["provenance"], dse_provenance_now(dse))
+        if dse["base_profile"] != profile_name:
+            dse_stale.append(f"explored on `{dse['base_profile']}`, this report uses `{profile_name}`")
 
     results = {
         "architectures": archs, "critical_path": cp, "imbalance": imbalance, "scaling": scaling,
@@ -362,7 +437,10 @@ def _build_report(quick: bool, dse_path, measurements_path, progress) -> tuple[s
         "compression": compression, "model_suite": models, "workloads": workloads,
         "correctness": correct, "calibration": calibration.to_json(), "calibration_plan": plan,
         "gate": [gate_primary.to_json(), gate_best.to_json()], "regime_ratios": ratios,
-        "base_profile": profile_name, "calibrated": calibrated,
+        "base_profile": profile_name, "calibrated": calibrated, "routing": routing,
+        "measured_formats": {f.name: b for f, b in measured_formats.items()},
+        "candidate_scaling": {"primary": primary_scaling, "favourable": ratios["scaling"]},
+        "dse_stale": dse_stale,
         "dse": None if dse is None else {k: v for k, v in dse.items() if k != "front"},
     }  # fmt: skip
 
@@ -436,6 +514,11 @@ def _build_report(quick: bool, dse_path, measurements_path, progress) -> tuple[s
            "them; greedy scheduling is the sensible default. " if joint_gain < 0.01 else "")
         + "The overhead of either depends on a per-evaluation cost that only a production implementation "
         "can establish.")  # fmt: skip
+    measured_compression = ""
+    if measured_formats:
+        measured_compression = (f" (a measured profile of real weights, `{Path(ctx.compression_path).name}`, "
+                                f"gives {measured_formats[CompressionFormat.ENTROPY]:.2f} bits per weight with the "
+                                "best working codec, and is used for the entropy-coded format throughout)")  # fmt: skip
     ran = [m for m in models if "speedup_vs_a" in m]
     no_gain = [m for m in ran if m["speedup_vs_a"] <= 1.005]
     gains = [m["speedup_vs_a"] for m in ran if m["speedup_vs_a"] > 1.005]
@@ -498,14 +581,24 @@ def _build_report(quick: bool, dse_path, measurements_path, progress) -> tuple[s
                               f"on (`{profile_name}`); rerun with `--base-profile` set to a validated profile "
                               f"for the evidence to count as calibrated.")  # fmt: skip
 
-    md = f"""# BASP Dataflow v0.2 -- architecture discovery: simulation report
+    if routing.startswith("recorded"):
+        routing_line = f"routing for {spec.name} is {routing}; other models use synthetic routing"
+    else:
+        routing_line = "routing is synthetic (no recorded trace was given)"
+    if measured_formats:
+        compression_line = (f"the entropy-coded format uses the measured "
+                            f"{measured_formats[CompressionFormat.ENTROPY]:.2f} bits per weight")  # fmt: skip
+    else:
+        compression_line = "compression ratios are assumed"
+    md = f"""# BASP Dataflow v0.3 -- evidence-gated architecture discovery: simulation report
 
 > **Read this first.** {status_line} Everything about
 > compute-memory modules (performance, power, price) is an estimate with a
 > pessimistic-nominal-optimistic range (`configs/design_estimates.json`) that no measurement on
-> existing hardware can narrow; routing is synthetic. Figures written `x (a-b)` give the nominal
-> value and the range over those estimates. Regenerate with `python -m benchmarks.run_report`
-> (deterministic).
+> existing hardware can narrow; {routing_line}; {compression_line}. Figures written `x (a-b)` give
+> the nominal value and the range over those estimates. Evidence levels: E0 estimate or argument,
+> E1 uncalibrated simulation, E2 simulation validated on existing hardware, E3 measurement.
+> Regenerate with `python -m benchmarks.run_report` (deterministic; see `provenance.json`).
 
 ## 1. Hardware development decision
 
@@ -657,7 +750,7 @@ picks per token ({_effect(head, "both"):+.1%} against module shards only). v0.1 
 
 ### 4.11 Weight compression
 
-Order-0 entropy of INT4 codes plus scales, on synthetic weights:
+Order-0 entropy of INT4 codes plus scales, on synthetic weights{measured_compression}:
 
 {table(["weight distribution (synthetic)", "bits per weight", "saving vs 4.5-bit INT4"],
        [[k, v["entropy_bits_per_weight"], f"{v['saving_vs_int4']:.1%}"] for k, v in compression.items()])}
@@ -735,10 +828,11 @@ model). Tokens per second; systems for the largest models are hypothetical.
             verdict = "The fastest design found is a conventional system."
         else:
             verdict = "No conventional system is on the front."
-        stale = ("\n> The exploration was run on a different host/GPU profile "
-                 f"(`{dse['base_profile']}`) than this report (`{profile_name}`); rerun "
-                 "`python -m benchmarks.explore --base-profile ...` to make them consistent.\n"
+        stale = ("\n> **STALE -- do not draw conclusions from this section.** The stored exploration no "
+                 f"longer matches the repository: {'; '.join(dse_stale)}. Rerun `python -m benchmarks.explore`.\n"
                  if dse_stale else "")  # fmt: skip
+        if dse_stale:
+            verdict = "(No verdict: the exploration is stale.)"
         md += f"""{stale}
 {dse["evaluated"]:,} designs were simulated ({dse["method"]} search) out of {dse["feasible_designs"]:,} feasible
 combinations of architecture, GPU memory, module count, module memory, memory channels, MAC lanes,
@@ -766,9 +860,10 @@ Equal power -- the fastest design within an average power budget:
 {table(["budget", "fastest design", "tokens/s", "fastest conventional (A) tokens/s"], power_rows)}
 
 The front holds {composition}; no {", ".join(absent) if absent else "other"} design is on it. {verdict}
-The conventional side of this space has only two points (a 12 and a 24 GiB GPU of the same assumed
-speed): faster or multiple GPUs, which a real buyer with the same budget could choose, are not modelled,
-so the equal-cost rows above are generous to the module-based designs.
+The conventional candidates are one GPU per system, in the classes of `configs/design_estimates.json`
+(12, 24 and 32 GiB here, each with its own bandwidth and compute range); systems with several GPUs,
+which a buyer with the same budget could choose, are not modelled, so the equal-cost rows above are
+still generous to the module-based designs.
 """
     runs = correct["runs"]
     md += f"""
@@ -789,38 +884,48 @@ by at most {correct["max_abs_diff_between_dataflows"]:.1e} on logits of magnitud
 Such differences are at rounding level but are not zero, and a reordered sum could in principle
 tip a near-tied routing decision; none was observed. Real model weights have not been run.
 
-## 9. What v0.2 corrected in the v0.1 model
+## 9. What changed since earlier reports
 
-* GPU kernels are batched (one launch for back-to-back experts): the conventional baseline is
-  faster than v0.1 reported.
-* v0.1 claimed bit-identical logits under every policy. That holds only while the reduction order
-  is unchanged; partial sums accumulated on devices reorder FP32 additions, so those dataflows
-  agree within rounding (section 8). The v0.1 test passed for one model seed by luck.
-* The illustrative desktop's CPU arithmetic rate was raised from 30 to 80 GMAC/s so that CPU-side
-  decoding is limited by memory bandwidth, as public llama.cpp figures suggest; the lower value
-  roughly halved the conventional baseline for models that do not fit the GPU.
-* The output projection's location is chosen by the scheduler instead of being pinned to modules.
-* Expert-local scaling loss is identified as imbalance, not an inherent limit of modules.
-* Temporaries are released per layer, as their dependencies end.
-* The estimator books link time with gap filling and sharing, tightening estimates under contention.
+Corrected in v0.3 (each found in an audit of v0.2 or while fixing it, and covered by a regression test):
 
-The v0.1 report in `reports/v0.1/` was produced by the v0.1 model and is kept as a record; its
-numbers are superseded by this report.
+* Module links on the local fabric were free: every hierarchical design on the v0.2 front used the
+  cheapest link, because the simulator gave it the fabric's bandwidth anyway.
+* Price corners favoured modules: the pessimistic corner priced host and GPU high. It now prices them
+  low (the strongest baseline), and GPU classes differ in speed, not only in memory.
+* A prompt was simulated as independent sequences, each with its own KV cache; it is now one sequence.
+* The host CPU's arithmetic rate (80 GMAC/s in v0.2, 30 in v0.1) made prompt processing several times
+  too slow; it is 400 GMAC/s, with generation still memory-bound.
+* The gate qualified one architecture with another's scaling result; every criterion now concerns one
+  candidate in one regime, at a required evidence level, and borrowed evidence counts as missing.
+* Unified memory (Apple M2) is one shared bus and one capacity pool, not two.
+
+Corrected in v0.2: batched GPU launches; the output projection's location chosen per token; the v0.1
+claim of bit-identical logits under every policy (true only while the reduction order is unchanged).
+
+The reports in `reports/v0.1/` and `reports/v0.2/` were produced by earlier models and are kept as
+records; their numbers are superseded by this report.
 """
     return md, results
 
 
-def write_report(outdir: str | Path = "reports/v0.2", *, quick: bool = False, progress=None,
-                 dse_path: str | Path | None = "reports/v0.2/dse.json",
-                 measurements_path: str | Path | None = "measurements.json",
-                 base: str | None = None) -> tuple[Path, Path]:  # fmt: skip
+def write_report(outdir: str | Path = "reports/v0.3", *, quick: bool = False, progress=None,
+                 dse_path: str | Path | None = "reports/v0.3/dse.json",
+                 measurements_path: str | Path | None = "evidence", base: str | None = None,
+                 trace_path: str | Path | None = None,
+                 compression_path: str | Path | None = None) -> tuple[Path, Path]:  # fmt: skip
+    """Write ``report.md`` and ``results.json`` (deterministic) and ``provenance.json``."""
     outdir = Path(outdir)
     markdown, results = build_report(quick=quick, progress=progress, dse_path=dse_path,
-                                     measurements_path=measurements_path, base=base)  # fmt: skip
+                                     measurements_path=measurements_path, base=base, trace_path=trace_path,
+                                     compression_path=compression_path)  # fmt: skip
+    record = results.pop("provenance")
+    # what the deterministic files depend on, without the machine-specific environment
+    results["inputs"] = {"source": record["source"], "configs": record["configs"], "inputs": record["inputs"]}
     outdir.mkdir(parents=True, exist_ok=True)
     md_path, json_path = outdir / "report.md", outdir / "results.json"
     md_path.write_text(markdown)
     json_path.write_text(json.dumps(results, indent=2, sort_keys=True, default=float) + "\n")
+    (outdir / "provenance.json").write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
     return md_path, json_path
 
 

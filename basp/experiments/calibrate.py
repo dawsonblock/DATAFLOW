@@ -65,30 +65,46 @@ def predict(measurement: Measurement, profiles: Mapping[str, str | Topology] | N
     prefill = measurement.kind == "prefill"
     batch = max(measurement.batch, 1)
     if prefill:
-        # prompt tokens are processed together: llama-bench records them as the batch
-        batch = measurement.batch if measurement.batch > 1 else (measurement.context_len or 512)
+        # prompt tokens are processed together: llama-bench records the physical batch
+        batch = measurement.batch if measurement.batch > 1 else 512
         tokens, warmup_tokens = 1, 0
-    context = batch // 2 if prefill else (measurement.context_len or 256)
+        context = measurement.context_len  # depth before the prompt; the prompt is one sequence
+    else:
+        context = measurement.context_len or 256  # average KV length over the generated tokens
     trace = synth_trace(tokens, spec.n_layers, spec.n_experts, spec.top_k, batch=batch, seed=0)
     policy = ExecutionPolicy("static_split", frozenset({DataflowMode.WEIGHT_STATIONARY}),
                              frozenset({host, gpu}), joint_rounds=0)  # fmt: skip
     try:
         setup = build(topology, spec, policy,
-                      lambda p, r: placement.place_static_split(p, r, gpu, host, layers),
-                      batch=batch, context_len=context, max_new_tokens=tokens, formats=formats)  # fmt: skip
+                      lambda p, r: placement.place_static_split(p, r, gpu, host, layers,
+                                                                measurement.n_cpu_moe),
+                      batch=batch, context_len=context, max_new_tokens=tokens, formats=formats,
+                      prompt=prefill)  # fmt: skip
     except placement.PlacementError:
         return None
     result = setup.run(trace, tokens=tokens, warmup_tokens=warmup_tokens)
     return result.tokens_per_s if result.ok else None
 
 
+def load_measurements(path: str | Path | None) -> MeasurementSet:
+    """One measurement set from a file or from every ``*/measurements.json`` under a directory."""
+    combined = MeasurementSet()
+    if path is None or not Path(path).exists():
+        return combined
+    files = sorted(Path(path).glob("*/measurements.json")) if Path(path).is_dir() else [Path(path)]
+    for file in files:
+        for m in MeasurementSet.load(file):
+            combined.add(m)
+    return combined
+
+
 def calibration_status(path: str | Path | None, profiles: Mapping[str, str | Topology] | None = None,
                        *, median_max: float = 0.10, p95_max: float = 0.20,
                        min_validation: int = 8) -> CalibrationReport:  # fmt: skip
-    """Calibration verdict from a measurement file (``None`` or missing file: nothing measured)."""
-    measurements = MeasurementSet()
-    if path is not None and Path(path).exists():
-        measurements = MeasurementSet.load(path)
+    """Calibration verdict from measurements: a file, or a directory whose ``*/measurements.json``
+    files (one per machine, as ``benchmarks.run_calibration`` writes them) are combined.
+    ``None`` or a missing path: nothing measured."""
+    measurements = load_measurements(path)
     return score(measurements, profiles, median_max=median_max, p95_max=p95_max,
                  min_validation=min_validation)  # fmt: skip
 
@@ -115,7 +131,7 @@ class ProfileFit:
     used: list[str]  # ids of the calibration measurements the fit saw
     median_error_before: float  # in-sample, with the prior profile
     median_error_after: float  # in-sample, with the fitted profile
-    evaluations: int  # simulator runs spent
+    evaluations: int  # simulator runs spent (one per measurement and parameter setting)
 
 
 def _device_names(profile: Mapping[str, Any]) -> dict[str, str]:
@@ -158,35 +174,55 @@ def fit_profile(measurements: Iterable[Measurement], machine: str, profile: Mapp
     unknown = [p for p in parameters if p not in FIT_PARAMETERS]
     if unknown:
         raise ValueError(f"cannot fit {unknown}; choose from {list(FIT_PARAMETERS)}")
-    cache: dict[tuple[float, ...], tuple[float, list[float]]] = {}
+    limit = math.log(span)
+    simulated: dict[tuple, float] = {}
+
+    def prediction(m: Measurement, logs: Sequence[float]) -> float:
+        key = (m.id, *(round(v, 6) for v in logs))
+        if key not in simulated:
+            topology = Topology.from_dict(_scaled(profile, {n: math.exp(v) for n, v in zip(names, logs)}))
+            value = predict(m, {machine: topology}, tokens=tokens, warmup_tokens=warmup_tokens)
+            if value is None or value <= 0:
+                raise ValueError(f"measurement {m.id!r} cannot be simulated on this profile")
+            simulated[key] = value
+        return simulated[key]
+
+    # Which parameters can change each prediction (probed at both ends of the search range):
+    # a measurement is re-simulated only when one of *its* parameters moves.
+    zero = [0.0] * len(names)
+    depends: dict[str, list[int]] = {}
+    for m in used:
+        base = prediction(m, zero)
+        depends[m.id] = [i for i in range(len(names)) if any(
+            abs(prediction(m, [*zero[:i], end, *zero[i + 1:]]) - base) > 1e-9 * base for end in (-limit, limit))]
+
+    def relevant(m: Measurement, logs: Sequence[float]) -> list[float]:
+        return [v if i in depends[m.id] else 0.0 for i, v in enumerate(logs)]
 
     def loss(logs: Sequence[float]) -> tuple[float, list[float]]:
-        key = tuple(round(v, 6) for v in logs)
-        if key not in cache:
-            topology = Topology.from_dict(_scaled(profile, {n: math.exp(v) for n, v in zip(names, logs)}))
-            errors, total = [], 0.0
-            for m in used:
-                predicted = predict(m, {machine: topology}, tokens=tokens, warmup_tokens=warmup_tokens)
-                if predicted is None or predicted <= 0:
-                    raise ValueError(f"measurement {m.id!r} cannot be simulated on this profile")
-                errors.append(abs(predicted - m.tokens_per_s) / m.tokens_per_s)
-                total += math.log(predicted / m.tokens_per_s) ** 2
-            cache[key] = (total / len(used) + regularisation * sum(v * v for v in logs), errors)
-        return cache[key]
+        errors, total = [], 0.0
+        for m in used:
+            predicted = prediction(m, relevant(m, logs))
+            errors.append(abs(predicted - m.tokens_per_s) / m.tokens_per_s)
+            total += math.log(predicted / m.tokens_per_s) ** 2
+        return total / len(used) + regularisation * sum(v * v for v in logs), errors
 
     logs = [0.0] * len(names)
     before = sorted(loss(logs)[1])
-    limit = math.log(span)
     golden = (math.sqrt(5.0) - 1.0) / 2.0
-    for _ in range(sweeps):
+    for sweep in range(sweeps):
         for i in range(len(names)):
             def along(value: float, i: int = i) -> float:
                 return loss([*logs[:i], value, *logs[i + 1:]])[0]
 
-            # coarse grid first (the error need not be unimodal), then golden-section refinement
-            grid = [limit * (k - 4) / 4 for k in range(9)]
-            best = min([*grid, logs[i]], key=lambda v: (along(v), abs(v)))
-            lo, hi = max(best - limit / 4, -limit), min(best + limit / 4, limit)
+            if sweep == 0:
+                # coarse grid first (the error need not be unimodal), then golden-section refinement
+                grid = [limit * (k - 4) / 4 for k in range(9)]
+                best = min([*grid, logs[i]], key=lambda v: (along(v), abs(v)))
+                lo, hi = max(best - limit / 4, -limit), min(best + limit / 4, limit)
+            else:  # later sweeps only refine around the current value (the others have moved)
+                best = logs[i]
+                lo, hi = max(best - limit / 8, -limit), min(best + limit / 8, limit)
             for _step in range(9):
                 a, b = hi - golden * (hi - lo), lo + golden * (hi - lo)
                 if along(a) <= along(b):
@@ -210,4 +246,4 @@ def fit_profile(measurements: Iterable[Measurement], machine: str, profile: Mapp
         mid = len(values) // 2
         return values[mid] if len(values) % 2 else (values[mid - 1] + values[mid]) / 2
 
-    return ProfileFit(fitted, scales, record["fitted_from"], median(before), median(after), len(cache))
+    return ProfileFit(fitted, scales, record["fitted_from"], median(before), median(after), len(simulated))

@@ -51,7 +51,8 @@ def energy_report(
         if res is not None:
             compute = res.served * dev.power.joules_per_mac
         res = resources.get(("mem", dev.device_id))
-        if res is not None:
+        # a shared (unified) memory resource is counted once, against the domain's first device
+        if res is not None and topology.memory_owner(dev.device_id) == dev.device_id:
             memory = res.served * dev.power.joules_per_mem_byte
         report.static_j += static
         report.compute_j += compute

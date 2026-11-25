@@ -100,10 +100,13 @@ def place_static_split(
     gpu: int,
     host: int,
     n_gpu_layers: int | None = None,
+    n_cpu_moe: int = 0,
 ) -> PlacementReport:
     """Conventional layer offloading: the first N whole layers on the GPU, the rest on the host.
 
-    With ``n_gpu_layers=None`` the largest N that fits GPU memory is used.
+    With ``n_gpu_layers=None`` the largest N that fits GPU memory is used.  ``n_cpu_moe`` keeps
+    the expert weights of the first M layers on the host even where the layer is on the GPU
+    (llama.cpp ``--n-cpu-moe``): attention runs on the GPU, those experts on the CPU.
     """
     spec = program.spec
     registry = residency.registry
@@ -122,13 +125,18 @@ def place_static_split(
                 break
             budget -= nbytes
             n_gpu_layers += 1
+    if n_cpu_moe < 0:
+        raise PlacementError("n_cpu_moe must be >= 0")
     report = PlacementReport("static_split")
     report.notes.append(f"{n_gpu_layers} of {spec.n_layers} layers on the GPU")
+    if n_cpu_moe:
+        report.notes.append(f"experts of the first {min(n_cpu_moe, spec.n_layers)} layers on the host")
     for layer in range(spec.n_layers):
         device = gpu if layer < n_gpu_layers else host
         _place_trunk(program, residency, report, layer, device)
+        experts_on = host if layer < n_cpu_moe else device
         for tensor in program.layer_expert_tensors(layer):
-            _place(residency, report, tensor, device)
+            _place(residency, report, tensor, experts_on)
     last = program.trunk_device[-1]
     head_bytes = sum(registry.spec(t).nbytes for t in program.head_w) + 64 * len(program.head_w)
     head_device = gpu if last == gpu and residency.free_bytes(gpu) >= head_bytes else last

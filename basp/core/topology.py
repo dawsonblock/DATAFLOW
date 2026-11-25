@@ -49,6 +49,10 @@ class DeviceSpec:
     persistent: bool = False
     queue_depth: int = 64
     power: PowerSpec = field(default_factory=PowerSpec)
+    #: devices with the same non-empty domain share one memory system (unified memory): one
+    #: capacity pool and one bandwidth resource, so traffic from either slows the other.  They
+    #: must declare the same capacity, bandwidth and energy per byte (those of the shared memory).
+    memory_domain: str = ""
 
     def __post_init__(self) -> None:
         if self.mem_bandwidth <= 0 or self.mem_capacity < 0:
@@ -103,6 +107,16 @@ class Topology:
                 raise ValueError(f"link {link.name!r} has invalid endpoints")
             if link.bandwidth_ab <= 0 or (link.bandwidth_ba is not None and link.bandwidth_ba <= 0):
                 raise ValueError(f"link {link.name!r} needs positive bandwidth")
+        domains: dict[str, DeviceSpec] = {}
+        for dev in self.devices.values():
+            if not dev.memory_domain:
+                continue
+            first = domains.setdefault(dev.memory_domain, dev)
+            if (dev.mem_capacity, dev.mem_bandwidth, dev.power.joules_per_mem_byte) != (
+                    first.mem_capacity, first.mem_bandwidth, first.power.joules_per_mem_byte):  # fmt: skip
+                raise ValueError(f"devices {first.name} and {dev.name} share memory domain "
+                                 f"{dev.memory_domain!r} but declare different memory capacity, "
+                                 "bandwidth or energy per byte")  # fmt: skip
         self.host = host if host is not None else min(self.devices)
         self.sync_latency_s = sync_latency_s
         self.name = name
@@ -170,6 +184,13 @@ class Topology:
                 rate = min(rate, self.links[hop.link].bandwidth(hop.forward))
             self._rates[key] = rate
         return self._rates[key]
+
+    def memory_owner(self, device: int) -> int:
+        """The device whose memory resource ``device`` uses (itself unless memory is shared)."""
+        domain = self.devices[device].memory_domain
+        if not domain:
+            return device
+        return min(d for d, dev in self.devices.items() if dev.memory_domain == domain)
 
     def validate(self) -> None:
         ids = sorted(self.devices)
@@ -245,6 +266,7 @@ def _device_to_dict(dev: DeviceSpec) -> dict[str, Any]:
         "warm_startup_s": dev.warm_startup_s,
         "persistent": dev.persistent,
         "queue_depth": dev.queue_depth,
+        "memory_domain": dev.memory_domain,
         "opcodes": "all" if caps.opcodes == ALL_OPCODES else sorted(o.name for o in caps.opcodes),
         "decode_rate": {
             f.name: ("inf" if math.isinf(r) else r) for f, r in caps.decode_rate.items()
@@ -286,6 +308,7 @@ def _device_from_dict(device_id: int, d: Mapping[str, Any]) -> DeviceSpec:
         warm_startup_s=None if d.get("warm_startup_s") is None else float(d["warm_startup_s"]),
         persistent=bool(d.get("persistent", False)),
         queue_depth=int(d.get("queue_depth", 64)),
+        memory_domain=str(d.get("memory_domain", "") or ""),
         power=PowerSpec(
             idle_w=float(power.get("idle_w", 0.0)),
             joules_per_mac=float(power.get("joules_per_mac", 0.0)),

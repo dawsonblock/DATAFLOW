@@ -75,6 +75,23 @@ def _try(key: str, design: HardwareDesign, spec: MoEModelSpec, prior, held, **kw
         raise
 
 
+def suite_entries() -> list[tuple[str, MoEModelSpec, str, float]]:
+    """(key, shape, purpose, bits per weight) for every model of the suite, INT8 variant included."""
+    entries: list[tuple[str, MoEModelSpec, str, float]] = [(k, s, p, 4.5) for k, s, p in SUITE]
+    entries.insert(3, ("qwen3-14b-int8", replace(SUITE[2][1], name="Qwen3-14B (INT8)",
+                                                 weight_format=CompressionFormat.INT8),
+                       "memory pressure and quantization", 8.5))  # fmt: skip
+    return entries
+
+
+def suite_spec(key: str) -> tuple[MoEModelSpec, float]:
+    """The shape and bits per weight the suite uses for ``key``."""
+    for k, spec, _, bits in suite_entries():
+        if k == key:
+            return spec, bits
+    raise KeyError(key)
+
+
 def model_suite(architectures=("A", "D", "E", "F", "H"), *, tokens: int = 4, warmup_tokens: int = 1,
                 keys: tuple[str, ...] | None = None,
                 gpu_sizes: tuple[int, ...] = (12, 24, 48)) -> list[dict[str, Any]]:  # fmt: skip
@@ -85,12 +102,8 @@ def model_suite(architectures=("A", "D", "E", "F", "H"), *, tokens: int = 4, war
     sized to the model, and four modules sized to the model.  Systems for the
     largest models are hypothetical.
     """
-    entries: list[tuple[str, MoEModelSpec, str, float]] = [(k, s, p, 4.5) for k, s, p in SUITE]
-    entries.insert(3, ("qwen3-14b-int8", replace(SUITE[2][1], name="Qwen3-14B (INT8)",
-                                                 weight_format=CompressionFormat.INT8),
-                       "memory pressure and quantization", 8.5))  # fmt: skip
     rows = []
-    for key, spec, purpose, bits in entries:
+    for key, spec, purpose, bits in suite_entries():
         if keys is not None and key not in keys:
             continue
         prior, held = traces(spec, tokens=tokens, prior_steps=8)
@@ -148,7 +161,7 @@ def workload_suite(spec: MoEModelSpec, architectures=("A", "E", "F", "H"), *,
         ("long-context attention (32k context)",
          {"tokens": 6, "warmup_tokens": 2, "context_len": 32768}, "tokens/s"),
         (f"prefill ({prompt}-token prompt)",
-         {"tokens": 1, "warmup_tokens": 0, "batch": prompt, "context_len": prompt // 2},
+         {"tokens": 1, "warmup_tokens": 0, "batch": prompt, "context_len": 0, "prompt": True},
          "prompt tokens/s"),
         (f"sustained decoding ({sustained} tokens)",
          {"tokens": sustained, "warmup_tokens": sustained // 4}, "tokens/s"),

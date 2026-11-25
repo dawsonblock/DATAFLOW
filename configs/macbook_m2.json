@@ -1,6 +1,6 @@
 {
  "name": "macbook_m2",
- "_note": "UNCALIBRATED PRIOR built from public specifications and assumptions, not from measurements on this machine. Run `python -m benchmarks.profile_hardware --template <this profile>` and `python -m benchmarks.run_llama_bench` on the machine to replace it. Unified memory is modelled as a CPU device and a GPU device that share one memory system through a link with no latency and effectively unlimited bandwidth. Values assume the base M2 chip with 16 GB; edit for M2 Pro or M2 Max.",
+ "_note": "UNCALIBRATED PRIOR built from public specifications and assumptions, not from measurements on this machine. Run the calibration procedure (docs/calibration.md) to replace it. Unified memory: the CPU and GPU devices share one memory domain, i.e. one 16 GiB capacity pool and one bandwidth resource (70 GB/s assumed usable of the 100 GB/s peak), so traffic from either slows the other. Not modelled: macOS's limit on the GPU working set (about two thirds of RAM) and zero-copy sharing (a transfer between the two devices is charged as a copy over the shared bus). Values assume the base M2 with 16 GB; edit mem_capacity for other configurations (both devices, same value).",
  "host": "host",
  "sync_latency_s": 1e-06,
  "devices": [
@@ -9,7 +9,7 @@
    "kind": "CPU",
    "mem_capacity": 17179869184,
    "mem_bandwidth": 70000000000.0,
-   "compute_rate": 80000000000.0,
+   "compute_rate": 250000000000.0,
    "kernel_startup_s": 5e-07,
    "warm_startup_s": 5e-08,
    "decode_rate": {
@@ -24,15 +24,16 @@
    "stream_ingest": false,
    "power": {
     "idle_w": 5.0,
-    "joules_per_mac": 2e-10,
+    "joules_per_mac": 6e-11,
     "joules_per_mem_byte": 8e-11
    },
-   "_comment": "Apple M2 (4 performance + 4 efficiency cores). Assumed: 70 GB/s usable of the 100 GB/s unified memory bandwidth and 80 GMAC/s for INT4 kernels on the CPU, chosen so that CPU-only decoding of a dense 7B model lands near commonly reported llama.cpp figures. Uncertain; calibration replaces it."
+   "_comment": "Apple M2 (4 performance + 4 efficiency cores), 250 GMAC/s on the CPU. The arithmetic rate is the sustained rate of llama.cpp's quantised matrix-matrix kernels (prompt processing); token generation stays limited by memory bandwidth at this rate, as llama.cpp on desktop CPUs is commonly reported to be. Energy per operation is set so that full arithmetic load draws roughly the package power. v0.2 used 80 GMAC/s, which made prompt processing several times too slow. An assumption until calibrated.",
+   "memory_domain": "unified"
   },
   {
    "name": "gpu",
    "kind": "GPU",
-   "mem_capacity": 10737418240,
+   "mem_capacity": 17179869184,
    "mem_bandwidth": 70000000000.0,
    "compute_rate": 1800000000000.0,
    "kernel_startup_s": 5e-06,
@@ -51,7 +52,8 @@
     "idle_w": 3.0,
     "joules_per_mac": 1e-11,
     "joules_per_mem_byte": 8e-11
-   }
+   },
+   "memory_domain": "unified"
   }
  ],
  "links": [

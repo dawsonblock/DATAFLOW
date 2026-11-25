@@ -1,5 +1,5 @@
 {
-  "_note": "ESTIMATES FOR HARDWARE THAT DOES NOT EXIST, AND PRICE GUESSES. Every entry is a (pessimistic, nominal, optimistic) triple chosen by judgement, not measured and not quoted from a supplier. Calibrating the simulator against existing CPUs and GPUs does not narrow any of these ranges. Decisions must hold at the pessimistic end.",
+  "_note": "ESTIMATES FOR HARDWARE THAT DOES NOT EXIST, AND PRICE GUESSES. Every entry is a (pessimistic, nominal, optimistic) triple chosen by judgement, not measured and not quoted from a supplier. Corners are named from the point of view of the module proposal: 'pessimistic' is the corner least favourable to it. For the modules and the fabric that means slow, power-hungry and expensive; for components every system shares (host, GPU) it means CHEAP and FAST, because those make the conventional baseline stronger. Calibrating the simulator against existing CPUs and GPUs does not narrow any module entry. Decisions must hold at the pessimistic corner.",
   "module": {
     "mem_efficiency": {
       "pessimistic": 0.5,
@@ -84,44 +84,117 @@
   },
   "host": {
     "cost_base_usd": {
-      "pessimistic": 1100.0,
+      "pessimistic": 600.0,
       "nominal": 800.0,
-      "optimistic": 600.0
+      "optimistic": 1100.0
     },
     "cost_per_gib_usd": {
-      "pessimistic": 5.0,
+      "pessimistic": 2.0,
       "nominal": 3.0,
-      "optimistic": 2.0
+      "optimistic": 5.0
     },
     "workstation_surcharge_usd": {
       "pessimistic": 3000.0,
       "nominal": 1800.0,
       "optimistic": 1200.0
     },
-    "desktop_pcie_lanes": 20
+    "desktop_pcie_lanes": 20,
+    "_note": "Host prices: pessimistic = cheapest (it strengthens the baseline). The workstation surcharge is paid only by designs needing more PCIe lanes than a desktop board offers, so its pessimistic value is the high one."
   },
   "gpu": {
-    "cost_usd_by_gib": {
+    "_note": "GPU classes by memory size. Scales are relative to the base profile's GPU (the 12 GiB class: the RTX 3080 Ti of the calibration machine, whose profile supplies the absolute values). Pessimistic = fast and cheap (strongest conventional baseline). Spec memory bandwidths used for the scales: 3080 Ti 912 GB/s, 4080 717, 5080 960, 3090 936, 4090 1008, 5090 1792, A6000 768, 6000 Ada 960 GB/s. Prices are street-price guesses.",
+    "base_class": "12",
+    "classes": {
       "12": {
-        "pessimistic": 1000.0,
-        "nominal": 700.0,
-        "optimistic": 500.0
+        "examples": "RTX 3080 Ti (the calibration machine)",
+        "bandwidth_scale": {
+          "pessimistic": 1.0,
+          "nominal": 1.0,
+          "optimistic": 1.0
+        },
+        "compute_scale": {
+          "pessimistic": 1.0,
+          "nominal": 1.0,
+          "optimistic": 1.0
+        },
+        "cost_usd": {
+          "pessimistic": 500.0,
+          "nominal": 700.0,
+          "optimistic": 1000.0
+        }
       },
       "16": {
-        "pessimistic": 1300.0,
-        "nominal": 900.0,
-        "optimistic": 650.0
+        "examples": "RTX 4080 / 4070 Ti Super / 5080",
+        "bandwidth_scale": {
+          "pessimistic": 1.05,
+          "nominal": 0.85,
+          "optimistic": 0.74
+        },
+        "compute_scale": {
+          "pessimistic": 1.6,
+          "nominal": 1.4,
+          "optimistic": 1.0
+        },
+        "cost_usd": {
+          "pessimistic": 650.0,
+          "nominal": 900.0,
+          "optimistic": 1300.0
+        }
       },
       "24": {
-        "pessimistic": 2500.0,
-        "nominal": 1800.0,
-        "optimistic": 1500.0
+        "examples": "RTX 3090 / 4090",
+        "bandwidth_scale": {
+          "pessimistic": 1.1,
+          "nominal": 1.08,
+          "optimistic": 1.03
+        },
+        "compute_scale": {
+          "pessimistic": 2.4,
+          "nominal": 1.8,
+          "optimistic": 1.0
+        },
+        "cost_usd": {
+          "pessimistic": 800.0,
+          "nominal": 1800.0,
+          "optimistic": 2500.0
+        }
+      },
+      "32": {
+        "examples": "RTX 5090",
+        "bandwidth_scale": {
+          "pessimistic": 1.96,
+          "nominal": 1.96,
+          "optimistic": 1.9
+        },
+        "compute_scale": {
+          "pessimistic": 3.2,
+          "nominal": 2.8,
+          "optimistic": 2.2
+        },
+        "cost_usd": {
+          "pessimistic": 2000.0,
+          "nominal": 2600.0,
+          "optimistic": 3500.0
+        }
+      },
+      "48": {
+        "examples": "RTX A6000 / 6000 Ada",
+        "bandwidth_scale": {
+          "pessimistic": 1.05,
+          "nominal": 0.95,
+          "optimistic": 0.84
+        },
+        "compute_scale": {
+          "pessimistic": 2.4,
+          "nominal": 1.8,
+          "optimistic": 1.0
+        },
+        "cost_usd": {
+          "pessimistic": 4000.0,
+          "nominal": 5000.0,
+          "optimistic": 7000.0
+        }
       }
-    },
-    "cost_per_gib_usd_above_24": {
-      "pessimistic": 120.0,
-      "nominal": 90.0,
-      "optimistic": 70.0
     }
   },
   "fabric": {

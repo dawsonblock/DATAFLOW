@@ -116,7 +116,8 @@ def evaluate_calibration(
         predicted = predict(m)
         ok = _usable(predicted)
         rel = abs(predicted - m.tokens_per_s) / m.tokens_per_s if ok else None
-        rows.append({"id": m.id, "split": m.split, "measured": m.tokens_per_s,
+        rows.append({"id": m.id, "machine": m.machine, "model": m.model, "kind": m.kind,
+                     "split": m.split, "measured": m.tokens_per_s,
                      "predicted": float(predicted) if ok else None, "rel_error": rel})  # fmt: skip
         if ok:
             pairs[m.split].append((float(predicted), m.tokens_per_s))

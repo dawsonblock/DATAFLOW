@@ -89,6 +89,7 @@ def build(
     formats: FormatTable | None = None,
     prior: RoutingTrace | None = None,
     seed: int = 0,
+    prompt: bool = False,
 ) -> Setup:
     """Create registry, program, placement, scheduler and virtual system.
 
@@ -99,7 +100,7 @@ def build(
     registry = TensorRegistry(formats)
     program = ModelProgram(spec, registry, batch=batch, context_len=context_len,
                            max_new_tokens=max_new_tokens, head_shards=head_shards,
-                           expert_shards=expert_shards, fused=fused)  # fmt: skip
+                           expert_shards=expert_shards, fused=fused, prompt=prompt)  # fmt: skip
     residency = ResidencyMap(registry, topology)
     placement = place(program, residency)
     predictor = ExpertPredictor(spec.n_layers, spec.n_experts)

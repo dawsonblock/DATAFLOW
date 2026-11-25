@@ -71,7 +71,8 @@ def test_one_bad_tail_point_fails_on_p95_only():
     assert report.validation.p95 == pytest.approx(0.02 + 0.65 * 0.58)
     assert len(report.reasons) == 1 and "p95 error" in report.reasons[0]
     row = next(r for r in report.per_measurement if r["id"] == "val-3")
-    assert row == {"id": "val-3", "split": "validation", "measured": 43.0,
+    assert row == {"id": "val-3", "machine": "i9", "model": "qwen3-30b-a3b", "kind": "decode",
+                   "split": "validation", "measured": 43.0,
                    "predicted": pytest.approx(68.8), "rel_error": pytest.approx(0.6)}  # fmt: skip
 
 

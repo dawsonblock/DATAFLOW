@@ -18,7 +18,7 @@ def m(mid: str, split: str = "calibration", **kw) -> Measurement:
 
 def test_signature_identifies_the_benchmark_not_the_run():
     a, b = m("run-1", n_gpu_layers=16), m("run-2", n_gpu_layers=16, tokens_per_s=22.0)
-    assert a.signature == b.signature == ("i9-3080ti", "decode", "qwen3-30b-a3b", 4.5, 16, 0, 1, 0)
+    assert a.signature == b.signature == ("i9-3080ti", "decode", "qwen3-30b-a3b", 4.5, 16, 0, 0, 1, 0)
     assert m("x", n_gpu_layers=17).signature != a.signature
     assert m("x", kind="prefill", n_gpu_layers=16).signature != a.signature
     assert m("x", machine="m2", n_gpu_layers=16).signature != a.signature

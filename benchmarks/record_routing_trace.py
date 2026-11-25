@@ -4,8 +4,10 @@
         --out traces/qwen3_chat
 
 Loads a causal language model with Hugging Face ``transformers`` (default
-``Qwen/Qwen3-30B-A3B``), hooks every router -- an ``nn.Linear`` named ``gate`` whose output
-width equals ``config.num_experts`` -- runs the prompt and greedy generation with the KV cache,
+``Qwen/Qwen3-30B-A3B``), hooks every router -- a module named ``gate`` that scores
+``config.num_experts`` experts: an ``nn.Linear`` in transformers 4, a ``Qwen3MoeTopKRouter``
+returning ``(logits, scores, indices)`` in transformers 5 (checked against the 5.24 source) --
+runs the prompt and greedy generation with the KV cache,
 and writes two files in the BASP ``RoutingTrace`` JSON format:
 
 * ``<out>.prefill.json`` -- one step whose batch rows are the prompt tokens;
@@ -50,12 +52,22 @@ class RouterCollector:
             raise ValueError("need at least one router")
         self.n_routers = n_routers
         self.passes: list[list[np.ndarray]] = []
+        self.checked = 0  # router rows whose model-selected experts were compared
+        self.disagreements = 0  # rows where the recomputed top-k differs (ties, precision)
 
-    def record(self, router_index: int, logits: Any) -> None:
+    def record(self, router_index: int, logits: Any, selected: Any = None) -> None:
+        """Record one router call; ``selected`` (the model's own top-k expert ids, if the router
+        returns them) is checked against the top-k recomputed from the logits."""
         array = np.asarray(logits, dtype=np.float64)
         if array.ndim < 1:
             raise ValueError("router output must have an expert dimension")
         array = array.reshape(-1, array.shape[-1])
+        if selected is not None:
+            ids = np.asarray(selected).reshape(array.shape[0], -1)
+            k = ids.shape[1]
+            ours = np.argsort(-array, axis=1, kind="stable")[:, :k]
+            self.disagreements += int(sum(set(a) != set(b) for a, b in zip(ours.tolist(), ids.tolist())))
+            self.checked += array.shape[0]
         if not self.passes or len(self.passes[-1]) == self.n_routers:
             self.passes.append([])
         expected = len(self.passes[-1])
@@ -79,12 +91,31 @@ class RouterCollector:
         return build_trace(passes, top_k) if passes else None
 
 
+def router_width(module: Any) -> int | None:
+    """Number of experts a router module scores: ``out_features`` of a linear layer, or the first
+    dimension of the ``weight`` of a router module (transformers 5: ``Qwen3MoeTopKRouter`` holds a
+    ``[num_experts, hidden]`` weight and returns ``(logits, scores, indices)``)."""
+    width = getattr(module, "out_features", None)
+    if width is not None:
+        return int(width)
+    weight = getattr(module, "weight", None)
+    shape = getattr(weight, "shape", None)
+    return int(shape[0]) if shape is not None and len(shape) == 2 else None
+
+
+def router_output(output: Any) -> tuple[Any, Any | None]:
+    """(logits, selected expert ids or ``None``) from a router module's forward output."""
+    if isinstance(output, (tuple, list)):
+        return output[0], (output[2] if len(output) >= 3 else None)
+    return output, None
+
+
 def find_routers(model: Any, num_experts: int, router_name: str = "gate") -> list[tuple[str, Any]]:
-    """Router modules in call order: named ``router_name`` with ``out_features == num_experts``."""
+    """Router modules in call order: named ``router_name`` and scoring ``num_experts`` experts."""
     found, candidates = [], []
     for name, module in model.named_modules():
         leaf = name.rsplit(".", 1)[-1]
-        width = getattr(module, "out_features", None)
+        width = router_width(module)
         if leaf == router_name and width == num_experts:
             found.append((name, module))
         elif width == num_experts or leaf in ("gate", "router"):
@@ -153,7 +184,8 @@ def main(argv: list[str] | None = None) -> int:
     hooks = [
         module.register_forward_hook(
             lambda _m, _i, output, index=index: collector.record(
-                index, output.detach().float().cpu().numpy())
+                index, *(None if t is None else t.detach().float().cpu().numpy()
+                         for t in router_output(output)))
         )
         for index, (_, module) in enumerate(routers)
     ]  # fmt: skip
@@ -174,6 +206,8 @@ def main(argv: list[str] | None = None) -> int:
         "top_k": int(top_k),
         "routers": len(routers),
         "norm_topk_prob": bool(getattr(model.config, "norm_topk_prob", True)),
+        "router_rows_checked": collector.checked,
+        "router_rows_disagreeing": collector.disagreements,
     }
     stats = write_outputs(collector, int(top_k), args.out, meta)
     for phase in ("prefill", "decode"):

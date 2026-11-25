@@ -128,7 +128,12 @@ class VirtualSystem:
         self.net = FluidNetwork(self.sim)
         self.res: dict[tuple, Resource] = {}
         for d, dev in topology.devices.items():
-            self.res[mem_key(d)] = self.net.resource(f"mem:{dev.name}", dev.mem_bandwidth)
+            owner = topology.memory_owner(d)
+            if owner != d and mem_key(owner) in self.res:
+                self.res[mem_key(d)] = self.res[mem_key(owner)]  # unified memory: one shared bus
+            else:
+                name = dev.memory_domain or dev.name
+                self.res[mem_key(d)] = self.net.resource(f"mem:{name}", dev.mem_bandwidth)
             if dev.caps.can_compute:
                 self.res[compute_key(d)] = self.net.resource(f"mac:{dev.name}", dev.compute_rate, "mac")
             for fmt in dev.caps.decode_rate:
