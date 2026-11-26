@@ -33,6 +33,8 @@ class MoEModelSpec:
     n_shared_experts: int = 0
     #: per-head RMSNorm of queries and keys (Qwen3): one head_dim weight vector each per layer
     qk_norm: bool = False
+    #: RMSNorm before the output projection (every real model here; the small numeric model has none)
+    final_norm: bool = True
     #: attention parameters per layer when the architecture is not plain QKVO projections
     attn_params_override: int | None = None
     #: provenance of the shape: "published config", "representative" or "hypothetical"
@@ -88,17 +90,67 @@ class MoEModelSpec:
         return self.vocab * self.hidden
 
     @property
+    def final_norm_params(self) -> int:
+        return self.hidden if self.final_norm and self.vocab else 0
+
+    @property
+    def embedding_storage_params(self) -> int:
+        """Unique storage of the embedding table and the output projection (tied: one table)."""
+        return self.embed_params * (1 if self.tied_embeddings else 2)
+
+    @property
     def total_params(self) -> int:
         per_layer = self.n_experts * self.expert_params + self.trunk_params
-        embeds = self.embed_params * (1 if self.tied_embeddings else 2)
-        return self.n_layers * per_layer + embeds + self.hidden
+        return self.n_layers * per_layer + self.embedding_storage_params + self.final_norm_params
 
     @property
     def active_params(self) -> int:
-        """Parameters touched by one token (top_k experts per layer)."""
+        """"Activated" parameters as model cards count them: everything but the routed experts a
+        token does not select (both embedding tables included)."""
         per_layer = self.top_k * self.expert_params + self.trunk_params
-        embeds = self.embed_params * (1 if self.tied_embeddings else 2)
-        return self.n_layers * per_layer + embeds + self.hidden
+        return self.n_layers * per_layer + self.embedding_storage_params + self.final_norm_params
+
+    @property
+    def params_read_per_token(self) -> int:
+        """Parameters actually read to produce one token: every layer's trunk block and ``top_k``
+        routed experts, one embedding row, the final norm and the whole output projection."""
+        per_layer = self.top_k * self.expert_params + self.trunk_params
+        embedding_row = self.hidden if self.vocab else 0
+        return self.n_layers * per_layer + embedding_row + self.final_norm_params + self.head_params
+
+    def layer_accounting(self, *, batch: int = 1, mixed_context: int = 0,
+                         selected: int | None = None, unique: int | None = None) -> dict[str, int]:  # fmt: skip
+        """Arithmetic and parameter reads of one layer for ``batch`` rows, from the model's
+        dimensions alone (independent of how the compiler lowers it).
+
+        ``selected``: token-expert pairs (default ``batch * top_k``); ``unique``: distinct routed
+        experts those pairs use (default ``min(selected, n_experts)``).
+        """
+        selected = batch * self.top_k if selected is None else selected
+        unique = min(selected, self.n_experts) if unique is None else unique
+        norm_macs = batch * self.hidden * (2 if self.n_heads else 1)
+        attention_macs = batch * self.attention_macs(mixed_context) if self.n_heads else 0
+        return {
+            "trunk_macs": norm_macs + attention_macs + batch * self.router_params + batch * self.shared_params,
+            "trunk_params_read": self.trunk_params,  # norms, attention, router and shared experts, once
+            "expert_macs": selected * (self.expert_params + self.expert_inter),  # three projections and the gate
+            "expert_params_read": unique * self.expert_params,
+            "reduce_macs": batch * self.hidden * (min(self.top_k, unique) + self.n_shared_experts + 1),
+        }  # fmt: skip
+
+    def step_accounting(self, *, batch: int = 1, head_rows: int | None = None) -> dict[str, int]:
+        """Arithmetic and parameter reads of a step outside the layers: the embedding lookup, the
+        final norm and the output projection."""
+        rows = batch if head_rows is None else head_rows
+        has_vocab = bool(self.vocab)
+        return {
+            "embed_macs": batch * self.hidden if has_vocab else 0,  # one row copied per token
+            "embed_params_read": batch * self.hidden if has_vocab else 0,
+            "final_norm_macs": rows * self.hidden if self.final_norm_params else 0,
+            "final_norm_params_read": self.final_norm_params,
+            "head_macs": rows * self.head_params,
+            "head_params_read": self.head_params,
+        }
 
     @property
     def kv_bytes_per_token_layer(self) -> int:
@@ -133,7 +185,7 @@ def tiny_spec(**overrides) -> MoEModelSpec:
     """A small attention-free MoE stack for tests and numerical co-simulation."""
     base = {
         "name": "tiny-moe", "hidden": 64, "n_layers": 3, "n_experts": 8, "top_k": 2,
-        "expert_inter": 96, "vocab": 256,
+        "expert_inter": 96, "vocab": 256, "final_norm": False,
     }  # fmt: skip
     base.update(overrides)
     return MoEModelSpec(**base)

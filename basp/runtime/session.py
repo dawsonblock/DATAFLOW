@@ -29,6 +29,8 @@ class Session:
         self.engine = engine
         self.kv = KVCache(config, max_tokens)
         self.position = 0
+        #: the tokens whose keys and values the cache holds (``len(tokens) == position``)
+        self.tokens: list[int] = []
         self.closed = False
 
     def _run(self, ids, *, all_logits: bool, capture: bool, phase: str) -> ForwardOutput:
@@ -47,6 +49,7 @@ class Session:
             tel.decode_tokens += len(ids)
             tel.decode_seconds += elapsed
         self.position += len(ids)
+        self.tokens.extend(int(t) for t in ids)
         return out
 
     def prefill(self, ids, *, all_logits: bool = False, capture: bool = False) -> ForwardOutput:
@@ -61,6 +64,11 @@ class Session:
         if not 0 <= position <= self.position:
             raise ValueError(f"cannot truncate to {position}: the session holds {self.position} tokens")
         self.position = position
+        del self.tokens[position:]
+
+    def holds_prefix_of(self, tokens) -> bool:
+        """Whether the cache holds exactly a proper prefix of ``tokens`` (so the rest can be fed)."""
+        return self.position < len(tokens) and self.tokens == [int(t) for t in tokens[:self.position]]
 
     @property
     def capacity(self) -> int:

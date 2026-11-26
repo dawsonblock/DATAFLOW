@@ -32,10 +32,11 @@ hardware decision, because runtime measurements are what make that decision cred
 | v0.4 | Evidence-gated heterogeneous execution foundation | Receipt-based evidence; physical memory domains; a runtime that executes real GGUF models and is verified against a reference | **Done for the CPU** (below); calibration still unmeasured |
 | Calibration | Held-out prediction error within thresholds on the calibration machines | `benchmarks.run_calibration` on each machine | **Ready to run**; nothing measured (needs the machines) |
 | v0.5 | Predictive speculative execution (BASP-X, phase 1): fewer weight reads per token | Speculative decoding exact in greedy and in distribution; grouped expert reads measured on a real MoE model | **Done on the CPU** (below): measured, not yet against llama.cpp or KTransformers |
-| v0.6 | Native execution backends and a competitive baseline | C++ CPU (SIMD), CUDA and Metal/GGML backends behind `ExecutionBackend`, passing the same parity harness; llama.cpp and KTransformers measured on the same machine | Not started (declared, unavailable stubs) |
-| v0.7 | Adaptive memory and expert management on real hardware | Measured improvement over a tuned llama.cpp (incl. `--n-cpu-moe`) on the same machine | Components in place (memory domains, cache policies, prediction measured on real routing) |
-| v0.8 | Architecture I and distributed execution | Adaptive hierarchical execution with cost `C(p) = T + λE + μR + γU`, measured against H and E; remote machines only for whole requests or resident expert groups | Not started (deferred from v0.4) |
-| v0.9 | Conditional accelerator RTL | Synthesis and formal verification of a quantised matrix-vector unit | Blocked on the gate |
+| v0.6 | Repair and validation before expansion | The 14 audit findings fixed with behaviour tests; a pre-declared request-latency protocol with paired analysis; an installable package whose release check runs the reference verification | **Done** (below); the decision study and the native arms are for the target machine |
+| v0.7 | A fair native baseline, then at most one bounded native intervention | llama.cpp pinned and tuned on the i9 + 3080 Ti (arm D); a profile showing the addressable share of request time; the intervention (arm E) only if its headroom `1/(1 - f r)` can reach 1.20x | Not started; needs the target machine |
+| v0.8 | Native execution backends; adaptive memory and expert management on real hardware | C++/SIMD, CUDA and Metal/GGML behind `ExecutionBackend`, passing the parity harness; measured improvement over a tuned llama.cpp (incl. `--n-cpu-moe`) on the same machine | Only if v0.7's decision study meets its criterion |
+| v0.9 | Architecture I and distributed execution | Adaptive hierarchical execution with cost `C(p) = T + λE + μR + γU`, measured against H and E; remote machines only for whole requests or resident expert groups | Not started (deferred from v0.4) |
+| v0.10 | Conditional accelerator RTL | Synthesis and formal verification of a quantised matrix-vector unit | Blocked on the gate |
 | v1.0 | Validated inference product | Reproducible hardware benchmarks | Blocked on the gate |
 
 ### Evidence levels

@@ -1,5 +1,6 @@
-"""The v0.5 report: architecture discovery, investigations, the physical runtime's verification,
-expert-cache policies, and the evidence-gated decision (decided from receipts).
+"""The v0.6 report: architecture discovery, investigations, the physical runtime's verification,
+expert-cache policies, request-latency studies under the benchmark protocol, and the
+evidence-gated decision (decided from receipts, with validation coverage scoped to the regime).
 
 Deterministic: the same code, profiles, estimates, inputs and seeds give byte-identical
 ``report.md`` and ``results.json`` (the software environment and git state go to
@@ -18,7 +19,7 @@ from typing import Any
 import numpy as np
 
 from basp.backends.cpu import NumericPayload
-from basp.calibration import coverage
+from basp.calibration import coverage, observed_coverage, required_regimes
 from basp.calibration.plan import plan_runs
 from basp.core.capabilities import DeviceKind
 from basp.core.tensor import CompressionFormat
@@ -36,6 +37,7 @@ from basp.evidence import (
     sha256_json,
     source_fingerprint,
     stale_reasons,
+    validity,
 )
 from basp.experiments import investigations as inv
 from basp.experiments.architectures import ARCHITECTURES
@@ -69,6 +71,7 @@ from basp.experiments.variants import (
     context,
     design_for,
     load_compression_profile,
+    routing_provenance,
     routing_source,
     run_architecture,
     set_context,
@@ -228,14 +231,12 @@ def expert_cache_policies(spec, profile_name: str, *, steps: int = 128, capaciti
 def runtime_verification(evidence: str | Path | None) -> list[dict[str, Any]]:
     """Recorded runtime-parity results (``benchmarks.verify_runtime``), each checked against
     the current runtime code: a result produced by different runtime code is stale."""
-    from basp.verification.parity_report import runtime_fingerprint
-
     out = []
     if evidence is None or not Path(evidence).is_dir():
         return out
-    now = runtime_fingerprint()
     for file in sorted(Path(evidence).glob("verification/*/parity.json")):
         r = json.loads(file.read_text())
+        check = validity.check(r)
         out.append({"model": r["model"], "file": r["file"]["name"], "verdict": r["verdict"],
                     "backend": ", ".join(r.get("backend", ["numpy-cpu"])),
                     "reasons": r["reasons"], "numerical_error": r["numerical_error"],
@@ -245,23 +246,42 @@ def runtime_verification(evidence: str | Path | None) -> list[dict[str, Any]]:
                     "quantisation": r.get("quantisation"), "prompt": r.get("prompt_text"),
                     "generated_text": (r.get("generated_text") or {}).get("runtime"),
                     "decode_tokens_per_s": r["telemetry"]["decode"]["tokens_per_s"],
-                    "stale": r["runtime_fingerprint"] != now})  # fmt: skip
+                    "validity": check, "stale": not check["valid"]})  # fmt: skip
     return out
 
 
 def speculative_evidence(evidence: str | Path | None) -> dict[str, Any]:
     """Recorded speculative-execution measurements (``benchmarks.speculative_bench``), each
     marked stale if the runtime code changed since it was measured."""
-    from basp.verification.parity_report import runtime_fingerprint
-
     out: dict[str, Any] = {}
     if evidence is None or not (Path(evidence) / "speculative").is_dir():
         return out
-    now = runtime_fingerprint()
     for file in sorted((Path(evidence) / "speculative").glob("*.json")):
         data = json.loads(file.read_text())
-        data["stale"] = data.get("environment", {}).get("runtime_fingerprint") != now
+        data["validity"] = validity.check(data)
+        data["stale"] = not data["validity"]["valid"]
         out[file.stem] = data
+    return out
+
+
+def study_evidence(evidence: str | Path | None) -> list[dict[str, Any]]:
+    """Request-latency studies under the protocol (``benchmarks.run_study``), each with its
+    validity under the same rule as every other stored measurement."""
+    import importlib.util
+
+    import basp.bench
+
+    out: list[dict[str, Any]] = []
+    if evidence is None or not (Path(evidence) / "studies").is_dir():
+        return out
+    tool = importlib.util.find_spec("benchmarks.run_study")
+    tool_files = [*([Path(tool.origin)] if tool and tool.origin else []),
+                  *sorted(Path(basp.bench.__file__).parent.glob("*.py"))]  # fmt: skip
+    for file in sorted(Path(evidence).glob("studies/**/summary.json")):
+        data = json.loads(file.read_text())
+        data["path"] = file.parent.relative_to(Path(evidence)).as_posix()
+        data["validity"] = validity.check(data, tool_files=tool_files)
+        out.append(data)
     return out
 
 
@@ -298,7 +318,7 @@ def _speculative_section(spec_ev: dict[str, Any]) -> str:
                         if isinstance(r, dict) and "identical" in r)  # fmt: skip
         backend = ", ".join(d.get("backend", ["numpy-cpu"]))
         parts += ["", (f"**Dense: {d['draft']} drafting for {d['target']}** ({d['tokens']} greedy tokens per prompt, "
-                  f"backend {backend}){' -- stale: the runtime changed since' if d['stale'] else ''}:"), "",
+                  f"backend {backend}){validity.note(d['validity'])}:"), "",
                   table(["prompt", "method", "tokens/s", "speed-up over plain decoding", "acceptance",
                          "tokens identical"], rows), "",
                   f"Best {best[2]:.2f}x ({best[0]}, {best[1]}); worst {worst[2]:.2f}x ({worst[0]}, {worst[1]}). "
@@ -324,7 +344,7 @@ def _speculative_section(spec_ev: dict[str, Any]) -> str:
         parts += ["", f"**Mixture of experts: {moe['target']}** (real weights, real routing; "
                   f"perplexity {moe['perplexity']['value']:.2f} on the {moe['perplexity']['tokens']}-token check text -- "
                   "a broken expert path gives nonsense; the text is probably memorised by a model this size)"
-                  + (" -- stale: the runtime changed since" if moe["stale"] else "") + ".", "",
+                  + validity.note(moe["validity"]) + ".", "",
                   (f"Ordinary decoding read {seq['decode_expert_requests_per_token']:.0f} experts per token "
                   f"({seq['decode_expert_requests_per_token'] / n_layers:.1f} per layer: top-8 of 128, "
                   f"{seq['decode_expert_bytes_per_token'] / 1e6:.0f} MB of stored weights). If `g` consecutive tokens "
@@ -350,10 +370,54 @@ def _speculative_section(spec_ev: dict[str, Any]) -> str:
         rows = [[r["tokens"], r["reused"], f"{r['full_prefill_s']:.2f}", f"{r['with_cache_s']:.2f}",
                  f"{r['speedup']:.1f}x", "yes" if r["same_next_token"] else "no"] for r in prefix["rows"]]  # fmt: skip
         parts += ["", (f"**Shared-prefix KV cache** ({prefix['model']}; four questions after the same system "
-                  "prompt; the first fills the cache):"), "",
+                  f"prompt; the first fills the cache){validity.note(prefix['validity'])}:"), "",
                   table(["prompt tokens", "reused from cache", "full prefill (s)", "with cache (s)", "speed-up",
                          "same next token"], rows)]  # fmt: skip
     return "\n".join(parts)
+
+
+def _studies_section(studies: list[dict[str, Any]]) -> str:
+    """Markdown for the request-latency studies, computed from their summaries."""
+    head = ["### Request-latency studies under the protocol (v0.6)", "",
+            ("The primary outcome is end-to-end request latency for exactly the requested number of tokens "
+             "(prompt processing, drafting, verification and orchestration included; model start-up excluded), in "
+             "paired, counterbalanced trials, with prompts as the independent units (`configs/benchmark_protocol.json`, "
+             "`basp.bench`). Exploratory and tuning studies never support a decision; only a frozen decision study "
+             "on held-out prompts can.")]  # fmt: skip
+    if not studies:
+        return "\n".join([*head, "", "No study has been run (`python -m benchmarks.run_study`)."])
+    rows, work = [], []
+    for st in studies:
+        a, d = st["analysis"], st["decision"]
+        ident = (st.get("identity") or {}).get("models") or {}
+        model = (ident.get("target") or {}).get("name", "native engine")
+        arms = st["arms"]
+        cand = arms[a["candidate"]]
+        label = cand.get("label") if cand.get("label") != "tuning candidate" else json.dumps(
+            {k: v for k, v in cand.items() if k in ("drafter", "k", "k_max")})  # fmt: skip
+        interval = "-" if a["speedup"] is None else f"{a['speedup']:.3f}x ({a['ci_low']:.2f}-{a['ci_high']:.2f})"
+        rows.append([f"`{st['path']}`", model, f"{a['baseline']} vs {a['candidate']}: {label}",
+                     f"{a['prompts_with_valid_pairs']}/{a['prompts_planned']}", a["valid_pairs"], len(a["failures"]),
+                     interval, d["verdict"].replace("_", " ") + validity.note(st["validity"])])  # fmt: skip
+        for arm, e in sorted(st["per_arm"].items()):
+            per = e.get("per_returned_token") or {}
+            if per.get("expert_logical_requests"):
+                io = e.get("storage_read_bytes")
+                work.append([f"`{st['path']}`", arm, f"{per['expert_logical_requests']:.0f}",
+                             f"{per['expert_cache_misses']:.0f}", f"{per['expert_decoded_stored_bytes'] / 1e6:.0f}",
+                             "-" if io is None else f"{io / max(e['returned_tokens'], 1) / 1e6:.1f}",
+                             f"{per.get('target_rows', 0):.2f}", f"{per.get('draft_rows', 0):.2f}"])  # fmt: skip
+    out = [*head, "", table(["study", "target", "comparison", "prompts covered", "valid pairs", "failed pairs",
+                             "request speed-up (95% interval)", "verdict"], rows)]  # fmt: skip
+    if work:
+        out += ["", ("Work and data movement per returned token, kept apart: *logical* expert requests (what the "
+                     "computation asked for), cache misses (what had to be loaded), stored bytes the loader decoded "
+                     "on those misses (which may have come from the OS page cache), and bytes the operating system "
+                     "reports were read from storage for the process (`/proc/self/io`); rows processed by the target "
+                     "and by the draft model count the work behind each returned token."), "",
+                table(["study", "arm", "logical expert requests", "cache misses", "decoded MB (misses)",
+                       "storage reads MB (OS)", "target rows", "draft rows"], work)]  # fmt: skip
+    return "\n".join(out)
 
 
 def calibration_plan(profile_key: str = "i9-11900kf-3080ti") -> list[dict[str, Any]]:
@@ -531,7 +595,7 @@ def dse_provenance_now(dse: dict[str, Any]) -> dict[str, Any]:
                       parameters=recorded.get("parameters_value", {}))  # fmt: skip
 
 
-def build_report(*, quick: bool = False, dse_path: str | Path | None = "reports/v0.4/dse.json",
+def build_report(*, quick: bool = False, dse_path: str | Path | None = "reports/v0.6/dse.json",
                  measurements_path: str | Path | None = "evidence", base: str | None = None,
                  trace_path: str | Path | None = None, compression_path: str | Path | None = None,
                  progress=None) -> tuple[str, dict[str, Any]]:  # fmt: skip
@@ -597,6 +661,7 @@ def _build_report(quick: bool, dse_path, measurements_path, progress) -> tuple[s
     caching = expert_cache_policies(spec, "desktop_gpu12", steps=32 if quick else 128, trace=recorded)
     verified = runtime_verification(measurements_path)
     spec_ev = speculative_evidence(measurements_path)
+    studies = study_evidence(measurements_path)
     backends = DeviceManager.discover().report()
     routing = routing_source(spec)
     measured_formats = dict(ctx.formats)
@@ -624,15 +689,20 @@ def _build_report(quick: bool, dse_path, measurements_path, progress) -> tuple[s
     plans_per_batch = greedy["plans_per_batch"]
     batch_time = 1.0 / greedy["tokens_per_s"] / (spec.n_layers + 1)
     receipts = stored_receipts(measurements_path)
+    # what successful validation observations on the validated profile's machine established
+    validated_machine = qualification.get(profile_name, {}).get("machine")
+    observed = (observed_coverage(calibration.by_machine[validated_machine].per_measurement)
+                if validated_machine in calibration.by_machine else {})  # fmt: skip
     common = {"calibration": calibration, "comparison_on_calibrated_profile": on_validated,
-              "receipts": receipts, "current": current}  # fmt: skip
+              "receipts": receipts, "current": current, "coverage": observed}  # fmt: skip
     regime_primary = f"{spec.name}, single-user decoding, 12 GiB GPU"
     primary_scaling = candidate_scaling(
         primary["key"], spec, lab.prior, lab.held,
         lambda n, replicas: default_design(primary["key"], HardwareDesign(modules=n)),
         corner=corner, tokens=lab.tokens, warmup_tokens=lab.warmup, context_len=lab.context_len,
     )  # fmt: skip
-    cand_primary = Candidate(primary["key"], primary["name"], regime_primary, model="qwen3-30b-a3b", corner=corner)
+    cand_primary = Candidate(primary["key"], primary["name"], regime_primary, model="qwen3-30b-a3b", corner=corner,
+                             requires=required_regimes(spec, gpu_gib=12, context_len=lab.context_len))  # fmt: skip
     receipts.extend(simulation_receipts(cand_primary, level=sim_level, bindings=sim_bindings, values={
         "throughput_ratio": primary[corner]["vs_a"]["throughput"], "energy_ratio": primary[corner]["vs_a"]["energy"],
         "cost_efficiency_ratio": primary[corner]["vs_a"]["cost_efficiency"]}))  # fmt: skip
@@ -648,7 +718,8 @@ def _build_report(quick: bool, dse_path, measurements_path, progress) -> tuple[s
                    "(most favourable regime found among published model shapes)")  # fmt: skip
     best_key = ratios["candidate"]
     cand_best = Candidate(best_key, ARCHITECTURES[best_key].name, regime_best, model=favourable["key"],
-                          corner=corner)  # fmt: skip
+                          corner=corner, requires=required_regimes(suite_spec(favourable["key"])[0],
+                                                                   gpu_gib=favourable["gpu_gib"]))  # fmt: skip
     receipts.extend(simulation_receipts(cand_best, level=sim_level, bindings=sim_bindings, values={
         "throughput_ratio": ratios["throughput"], "energy_ratio": ratios["energy"],
         "cost_efficiency_ratio": ratios["cost_efficiency"]}))  # fmt: skip
@@ -689,6 +760,11 @@ def _build_report(quick: bool, dse_path, measurements_path, progress) -> tuple[s
         "measured_formats": {f.name: b for f, b in measured_formats.items()},
         "candidate_scaling": {"primary": primary_scaling, "favourable": ratios["scaling"]},
         "dse_stale": dse_stale, "expert_cache": caching, "runtime_verification": verified,
+        "studies": [{k: st[k] for k in ("path", "study", "comparison", "analysis", "decision", "per_arm", "validity")}
+                    for st in studies],
+        "routing_provenance": routing_provenance(),
+        "gate_coverage": {"observed": observed, "primary_requires": list(cand_primary.requires),
+                          "favourable_requires": list(cand_best.requires)},
         "speculative": {k: {kk: vv for kk, vv in v.items() if kk not in ("prompts",)} | (
             {"prompts": {p: {lbl: {x: y for x, y in r.items() if x != "token_ids"} if isinstance(r, dict) else r
                              for lbl, r in runs.items()} for p, runs in v["prompts"].items()}}
@@ -795,7 +871,7 @@ def _build_report(quick: bool, dse_path, measurements_path, progress) -> tuple[s
     lines_work = [
         [w["workload"], w["metric"],
          *[f"{w['tokens_per_s'][a]:,.1f}" if a in w["tokens_per_s"] else "-" for a in ("A", "E", "F", "H")],
-         f"{w['speedup_vs_a']:.2f}x ({w['fastest']})"]
+         f"{w['speedup_vs_a']:.2f}x ({w['fastest']})", w.get("routing", "-")]
         for w in workloads
     ]  # fmt: skip
     machines = ", ".join(f"`{k}` -> `configs/{v}.json`" for k, v in MACHINE_PROFILES.items())
@@ -846,7 +922,7 @@ def _build_report(quick: bool, dse_path, measurements_path, progress) -> tuple[s
                             f"{measured_formats[CompressionFormat.ENTROPY]:.2f} bits per weight")  # fmt: skip
     else:
         compression_line = "compression ratios are assumed"
-    md = f"""# BASP Dataflow v0.5 -- predictive speculative execution: simulation and runtime report
+    md = f"""# BASP Dataflow v0.6 -- repair and validation: simulation and runtime report
 
 > **Read this first.** {status_line} Everything about
 > compute-memory modules (performance, power, price) is an estimate with a
@@ -1037,7 +1113,7 @@ model). Tokens per second; systems for the largest models are hypothetical.
 
 {spec.name}; each workload is a separate question with its own metric.
 
-{table(["workload", "metric", "A", "E", "F", "H", "best vs A"], lines_work)}
+{table(["workload", "metric", "A", "E", "F", "H", "best vs A", "routing used"], lines_work)}
 
 ## 7. Design-space exploration
 """
@@ -1142,7 +1218,7 @@ still generous to the module-based designs.
                           f"{v['hidden_rel_l2_max']:.1e} over {v['layers']} layers", routing_text,
                           f"{v['generated_tokens']} identical" if v["generation_identical"] else "diverge",
                           f"{ppl['relative']:.6f}" if ppl else "-",
-                          v["verdict"].upper() + (" (stale: runtime code changed since)" if v["stale"] else "")])  # fmt: skip
+                          v["verdict"].upper() + validity.note(v["validity"])])  # fmt: skip
         first = verified[0]
         quant = first["quantisation"]
         quant_text = ""
@@ -1247,9 +1323,26 @@ section 9 does.
 
 {_speculative_section(spec_ev)}
 
+{_studies_section(studies)}
+
 ## 12. What changed since earlier reports
 
-New in v0.5: speculative execution in the physical runtime (draft-model and prompt-lookup drafters,
+New in v0.6 (a repair release, no new capability): the runtime's expert store is owner-safe and
+transactional (an evicted block can no longer leave a stale cache entry; a failed acquisition rolls
+back what it took) and holds a hard ceiling on decoded expert weights, processing a layer's experts in
+bounded groups in the same accumulation order; sampling acceptance uses linear memory; generation and
+speculative generation leave the session in one documented state and can continue it; the
+shared-prefix cache validates before it admits and closes on failure. The simulator now lowers the
+embedding, the final norm and shared experts (reconciled against an independent dimensional count),
+and every workload states whether its routing was recorded or synthetic. Receipts are selected by
+content hash with the worst value deciding; logical expert requests are reported apart from cache
+misses, decoded bytes and storage reads; every runtime measurement carries complete identities checked
+by one validity rule. A calibration criterion now counts only validation observations that cover the
+candidate's regime. Request-latency studies follow a pre-declared protocol with paired,
+counterbalanced trials and prompt-level analysis (section 11). The package installs with its
+configurations, and a release check runs the reference verification, which cannot be skipped.
+
+New in v0.5:speculative execution in the physical runtime (draft-model and prompt-lookup drafters,
 exact greedy and distribution-preserving sampling acceptance, KV rollback, an adaptive draft-length
 controller), grouped expert reads with byte accounting, a memory-lean mode that runs Qwen3-30B-A3B,
 a shared-prefix KV cache, an optional PyTorch CPU backend under the same parity checks, and a
@@ -1283,14 +1376,14 @@ Corrected in v0.3 (each found in an audit of v0.2 or while fixing it, and covere
 Corrected in v0.2: batched GPU launches; the output projection's location chosen per token; the v0.1
 claim of bit-identical logits under every policy (true only while the reduction order is unchanged).
 
-The reports in `reports/v0.1/` to `reports/v0.4/` were produced by earlier models and are kept as
+The reports in `reports/v0.1/` to `reports/v0.5/` were produced by earlier models and are kept as
 records; their numbers are superseded by this report.
 """
     return md, results
 
 
-def write_report(outdir: str | Path = "reports/v0.4", *, quick: bool = False, progress=None,
-                 dse_path: str | Path | None = "reports/v0.4/dse.json",
+def write_report(outdir: str | Path = "reports/v0.6", *, quick: bool = False, progress=None,
+                 dse_path: str | Path | None = "reports/v0.6/dse.json",
                  measurements_path: str | Path | None = "evidence", base: str | None = None,
                  trace_path: str | Path | None = None,
                  compression_path: str | Path | None = None) -> tuple[Path, Path]:  # fmt: skip

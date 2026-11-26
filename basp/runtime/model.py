@@ -74,13 +74,14 @@ class Qwen3Model:
                 h = run("router", "rms_norm", x, w[p + "ffn_norm.weight"], eps=c.eps)
                 experts, weights, router_logits = run("router", "moe_router", h, w[p + "ffn_gate_inp.weight"],
                                                       top_k=c.top_k, normalize=c.normalize_topk)  # fmt: skip
-                # grouped execution: each selected expert's weights are fetched once for all rows
-                selected = np.unique(experts)
-                mats = self.w.fetch(i, selected)
-                try:
-                    y = run("experts", "moe_experts", h, experts, weights, mats.__getitem__)
-                finally:
-                    self.w.release(i, selected)
+                # Grouped execution: each selected expert is fetched once and serves every row that
+                # chose it.  If the layer's union does not fit the expert ceiling, it is computed in
+                # bounded groups; groups are ascending and accumulate into one buffer, so the
+                # additions happen in exactly the order of a single pass.
+                y = None
+                for group in self.w.groups(i, np.unique(experts)):
+                    with self.w.acquired(i, group) as mats:
+                        y = run("experts", "moe_experts", h, experts, weights, mats.__getitem__, only=group, out=y)
                 self.d.telemetry.expert_token_pairs += experts.size
                 x = run("experts", "add", x, y)
                 out.experts.append(experts)

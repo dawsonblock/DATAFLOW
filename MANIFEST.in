@@ -1,0 +1,3 @@
+include configs/*.json
+include README.md LICENSE CLAUDE.md
+recursive-include docs *.md

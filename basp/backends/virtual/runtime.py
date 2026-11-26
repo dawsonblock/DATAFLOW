@@ -66,8 +66,8 @@ def op_kind(op: OpNode) -> str:
         return "head"
     if op.opcode is OpCode.REDUCE:
         return "reduce"
-    if op.opcode in _TRUNK_OPS:
-        return "trunk"
+    if op.opcode in _TRUNK_OPS or op.attrs.get("shared_expert") or op.opcode is OpCode.EMBED:
+        return "trunk"  # the embedding lookup and always-active experts are trunk work
     if op.opcode is OpCode.EXPERT or "expert" in op.attrs:
         return "expert"
     return "other"
@@ -433,11 +433,20 @@ class Runtime:
         self._scanned = 0
         program = self.program
         x = program.input_tensor(self.graph, step)
-        self.system.residency.place(x, program.trunk_device[0], now=self.sim.now)
+        embed = program.embed(self.graph, step, x)
+        if step == 0 or program.embed_device is None:  # a placement that did not go through the harness
+            from basp.scheduler.placement import place_auxiliary
+
+            place_auxiliary(program, self.system.residency)
+        if embed.ops:
+            # the token ids appear where the previous token was sampled; the lookup produces x
+            self.system.residency.place(embed.outputs["tokens"], program.sample_device, now=self.sim.now)
+        else:
+            self.system.residency.place(x, program.trunk_device[0], now=self.sim.now)
         if self.payload is not None:
             self.payload.begin_step(step, x)
         trunk = program.trunk(self.graph, step, 0, x)
-        self._submit(trunk.ops, lambda: self._after_trunk(step, 0, trunk.outputs), f"s{step}.trunk0",
+        self._submit(embed.ops + trunk.ops, lambda: self._after_trunk(step, 0, trunk.outputs), f"s{step}.trunk0",
                      broadcast=(trunk.outputs["h"], 0))  # fmt: skip
 
     def _after_trunk(self, step: int, layer: int, tensors: dict[str, int]) -> None:
@@ -464,7 +473,8 @@ class Runtime:
             else:
                 self.predictor.observe_step(layer, routing)
         experts = program.experts(self.graph, step, layer, tensors["h"], routing)
-        reduce = program.reduce(self.graph, step, layer, experts.outputs, tensors["resid"])
+        reduce = program.reduce(self.graph, step, layer, experts.outputs, tensors["resid"],
+                                tensors.get("shared"))  # fmt: skip
         ops = experts.ops + reduce.ops
         x = reduce.outputs["x"]
         broadcast = None

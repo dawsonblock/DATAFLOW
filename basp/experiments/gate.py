@@ -11,7 +11,13 @@ estimate, and **on evidence of at least the required level** (``basp.evidence``)
   measured for architecture E does not qualify architecture H;
 * each criterion is decided by **metric-specific receipts** (``basp.evidence``): a receipt
   binds one value to the identities that produced it, and a receipt whose identities have
-  changed since (simulator source, profile, estimates, model weights, validation) is stale.
+  changed since (simulator source, profile, estimates, model weights, validation) is stale;
+* several applicable receipts count conservatively (the worst value decides);
+* validated simulation (E2) counts only **within the scope that was validated**: the candidate
+  names the regimes its comparison relies on (model family, layer placement, context, measured
+  quantity), and successful validation observations must cover each of them.  A dense-model
+  validation does not qualify a mixture-of-experts comparison on the same machine and profile;
+  timing validation does not qualify an energy claim.
 """
 
 from __future__ import annotations
@@ -20,7 +26,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from basp.calibration import CalibrationReport
+from basp.calibration import CalibrationReport, coverage_gaps
 from basp.evidence import EvidenceLevel, Qualification, Receipt, ReceiptRegistry, qualify
 
 E0, E1, E2, E3 = EvidenceLevel.E0, EvidenceLevel.E1, EvidenceLevel.E2, EvidenceLevel.E3
@@ -57,7 +63,9 @@ class Candidate:
     """One candidate architecture in one declared workload regime.
 
     ``model`` names the model the regime is about: evidence measured on any other model (a
-    small test model, say) cannot qualify the candidate.
+    small test model, say) cannot qualify the candidate.  ``requires`` lists the regimes the
+    comparison relies on the simulator for (``basp.calibration.required_regimes``): validated
+    simulation counts only if successful validation observations cover every one of them.
     """
 
     arch: str
@@ -65,6 +73,7 @@ class Candidate:
     regime: str
     model: str = ""
     corner: str = "pessimistic"
+    requires: tuple[str, ...] = ()
 
     @property
     def label(self) -> str:
@@ -129,8 +138,11 @@ def _criterion(name: str, threshold: str, q: Qualification, describe) -> Criteri
         result = "no usable evidence: " + (q.reasons[0] if q.reasons else "none recorded")
     else:
         result = describe(q.value)
+        notes = [r for r in q.reasons if "disagree" in r] if q.conflict else []
         if q.status == "not_evaluated" and q.reasons:
-            result += f" ({q.reasons[-1]})"
+            notes.append(q.reasons[-1])
+        if notes:
+            result += " (" + "; ".join(dict.fromkeys(notes)) + ")"
     return Criterion(name, threshold, result, q.status, q.level, q.required)
 
 
@@ -142,20 +154,33 @@ def evaluate_gate(
     calibration: CalibrationReport,
     comparison_on_calibrated_profile: bool,
     current: Mapping[str, str] | None = None,
+    coverage: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> GateDecision:
     """Evaluate every criterion for one candidate in one regime, from receipts.
 
     ``current`` holds the identities receipts must still match (simulator source, profile,
     estimates, validation).  Simulated evidence counts as E2 only through receipts bound to a
-    passing validation of the profile the comparison ran on.
+    passing validation of the profile the comparison ran on, and only if ``coverage`` -- what
+    successful validation observations on that machine established
+    (``basp.calibration.observed_coverage``) -- includes every regime the candidate requires.
     """
     current = dict(current or {})
     decision = GateDecision(candidate.regime, candidate.label)
     add = decision.criteria.append
+    per_regime = int(thresholds.get("min_validation_per_regime", 1))
+
+    def gaps(metric: str | None = None) -> list[str]:
+        return coverage_gaps(candidate.requires, coverage, min_per_regime=per_regime, metric=metric)
 
     def q(metric, meets, required, must_bind=None):
-        return qualify(metric, receipts, candidate=candidate.arch, regime=candidate.regime, meets=meets,
-                       required=required, current=current, must_bind=must_bind)  # fmt: skip
+        result = qualify(metric, receipts, candidate=candidate.arch, regime=candidate.regime, meets=meets,
+                         required=required, current=current, must_bind=must_bind)  # fmt: skip
+        missing = gaps(metric)
+        if result.status == "pass" and result.level is E2 and missing:
+            # validated simulation, but not validated for this: outside its scope it is E1
+            result.status = "not_evaluated"
+            result.reasons.append("validation does not cover " + ", ".join(missing))
+        return result
 
     # -- 1. the simulator's own accuracy, on held-out measurements --------------------------
     v = calibration.validation
@@ -167,6 +192,10 @@ def evaluate_gate(
     if status == "pass" and not comparison_on_calibrated_profile:
         status = "not_evaluated"
         result += "; but the comparison below did not run on the validated profile"
+    if status == "pass" and gaps():
+        status = "not_evaluated"
+        result += ("; but no successful validation observation covers " + ", ".join(gaps())
+                   + f" (at least {per_regime} needed for each regime this comparison relies on)")  # fmt: skip
     add(Criterion("Simulator calibration error",
                   f"<= {thresholds['calibration_median_max']:.0%} median, <= {thresholds['calibration_p95_max']:.0%} p95",
                   result, status, E3 if v.n else None, E3))  # fmt: skip

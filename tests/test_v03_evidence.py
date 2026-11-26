@@ -79,7 +79,7 @@ def test_provenance_detects_changed_configs_inputs_and_parameters(tmp_path):
 
 # -- audit defect A: calibration rows carry their machine; the report can use them -------------------
 def test_scored_rows_name_their_machine_and_the_report_finds_validated_profiles(tmp_path):
-    from basp.experiments.report_v5 import validated_profiles
+    from basp.experiments.report_v6 import validated_profiles
 
     ms = [Measurement(id=f"v{i}", machine=MACHINE, split="validation", kind="decode", model="qwen3-8b",
                       tokens_per_s=10.0, n_gpu_layers=4 * i) for i in range(3)]  # fmt: skip
@@ -560,9 +560,11 @@ def test_a_prompt_computes_only_the_last_tokens_logits():
         setup = build(topology, spec, policy, lambda p, r: placement.place_static_split(p, r, 1, 0, 18),
                       batch=64, context_len=0, max_new_tokens=1, prompt=prompt)  # fmt: skip
         graph = Graph()
-        head = setup.program.lm_head(graph, 0, setup.program.input_tensor(graph, 0)).ops[0]
-        sizes[prompt] = (head.batch, head.macs)
-    assert sizes[True] == (1, spec.head_params) and sizes[False] == (64, 64 * spec.head_params)
+        ops = {op.name: op for op in setup.program.lm_head(graph, 0, setup.program.input_tensor(graph, 0)).ops}
+        head, norm = ops["s0.lm_head"], ops["s0.final_norm"]
+        sizes[prompt] = (head.batch, head.macs, norm.batch)
+    # the final norm, too, runs only on the rows whose logits are computed
+    assert sizes[True] == (1, spec.head_params, 1) and sizes[False] == (64, 64 * spec.head_params, 64)
 
 
 def test_update_profile_refuses_a_profile_that_failed_validation(tmp_path, monkeypatch):

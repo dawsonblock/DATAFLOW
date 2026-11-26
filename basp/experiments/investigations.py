@@ -50,7 +50,7 @@ class Lab:
 
     def multi(self, key: str, design: HardwareDesign, n: int, *, concurrent: bool, tokens: int = 4,
               **kw) -> Outcome:  # fmt: skip
-        prior, held = traces(self.spec, tokens=tokens, prior_steps=16, batch=n)
+        prior, held = traces(self.spec, tokens=tokens, prior_steps=16, batch=n, fallback="synthetic")
         if concurrent:
             return run_architecture(key, design, self.spec, prior, held, tokens=tokens,
                                     warmup_tokens=1, context_len=self.context_len, concurrent=n, **kw)  # fmt: skip

@@ -14,7 +14,13 @@ from basp.core.tensor import CompressionFormat
 from basp.dse.hardware import CORNERS, HardwareDesign
 from basp.experiments.architectures import ARCHITECTURES
 from basp.experiments.investigations import Lab
-from basp.experiments.variants import Outcome, design_for, run_architecture, traces
+from basp.experiments.variants import (
+    Outcome,
+    design_for,
+    routing_provenance,
+    run_architecture,
+    traces,
+)
 from basp.workloads.model import MoEModelSpec
 from basp.workloads.zoo import SUITE
 
@@ -170,11 +176,15 @@ def workload_suite(spec: MoEModelSpec, architectures=("A", "E", "F", "H"), *,
     for name, options, metric in cases:
         options = dict(options)
         rows_in_trace = max(options.get("batch", 1), options.get("concurrent", 0))
+        # windows of many rows can be longer than a recording: fall back to synthetic routing
+        # explicitly, and say so in the row
         prior, held = traces(spec, tokens=options["tokens"], prior_steps=16 if rows_in_trace > 8 else 32,
-                             batch=rows_in_trace)  # fmt: skip
+                             batch=rows_in_trace, fallback="synthetic")  # fmt: skip
+        used = routing_provenance()[-1]
         options.setdefault("context_len", 2048)
         row: dict[str, Any] = {"workload": name, "metric": metric, "tokens_per_s": {},
-                               "latency_ms": {}, "tokens_per_joule": {}}  # fmt: skip
+                               "latency_ms": {}, "tokens_per_joule": {},
+                               "routing": used["source"] + (f" ({used['reason']})" if used["reason"] else "")}  # fmt: skip
         for arch in architectures:
             out = run_architecture(arch, default_design(arch), spec, prior, held,
                                    replicas=REPLICAS[arch], **options)  # fmt: skip

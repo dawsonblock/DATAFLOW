@@ -7,9 +7,8 @@ from pathlib import Path
 from typing import Any
 
 from basp.core.topology import Topology
+from basp.evidence.identity import CONFIG_DIR  # the checkout's configs/, or the packaged copy
 from basp.workloads.model import QWEN3_30B_A3B, MoEModelSpec, tiny_spec
-
-CONFIG_DIR = Path(__file__).resolve().parents[2] / "configs"
 
 MODELS: dict[str, MoEModelSpec] = {
     "qwen3-30b-a3b": QWEN3_30B_A3B,

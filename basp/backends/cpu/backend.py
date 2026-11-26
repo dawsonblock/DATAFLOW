@@ -85,7 +85,7 @@ class CPUBackend(ExecutionBackend):
         if op.kind == "moe_router":
             return kernels.moe_router(a[0], a[1], p["top_k"], p["normalize"])
         if op.kind == "moe_experts":
-            return kernels.moe_experts(*a)
+            return kernels.moe_experts(*a, only=p.get("only"), out=p.get("out"))
         raise AssertionError(op.kind)
 
     def synchronize(self) -> None:

@@ -7,7 +7,15 @@ micro-benchmark timings, the error statistics the hardware gate uses, and helper
 router decisions.  The scripts that produce the measurements live in ``benchmarks/``.
 """
 
-from basp.calibration.coverage import REGIMES, coverage, regime_covered, regimes_of
+from basp.calibration.coverage import (
+    REGIMES,
+    coverage,
+    coverage_gaps,
+    observed_coverage,
+    regime_covered,
+    regimes_of,
+    required_regimes,
+)
 from basp.calibration.curves import PerformanceCurve, validate_curve
 from basp.calibration.fit import (
     RooflineFit,
@@ -48,6 +56,7 @@ __all__ = [
     "apply_link_fit",
     "build_trace",
     "coverage",
+    "coverage_gaps",
     "error_stats",
     "evaluate_by_machine",
     "evaluate_calibration",
@@ -55,8 +64,10 @@ __all__ = [
     "fit_roofline",
     "fit_transfer",
     "logits_to_routing",
+    "observed_coverage",
     "regime_covered",
     "regimes_of",
+    "required_regimes",
     "trace_statistics",
     "validate_curve",
 ]

@@ -32,7 +32,9 @@ class Context:
     * ``trace`` -- recorded routing (``RoutingTrace``) used instead of synthetic routing for
       every model whose shape it matches;
     * ``formats`` -- measured bits per weight for stream formats (from a compression
-      profile), replacing the assumed ratios.
+      profile), replacing the assumed ratios;
+    * ``routing_log`` -- what routing every experiment actually used (``traces`` appends to it):
+      the report's statements about routing are computed from this log, never assumed.
     """
 
     base_profile: str = "desktop_gpu12"
@@ -40,6 +42,7 @@ class Context:
     trace_path: str | None = None
     formats: dict[CompressionFormat, float] = field(default_factory=dict)
     compression_path: str | None = None
+    routing_log: list[dict[str, Any]] = field(default_factory=list, compare=False)
 
 
 _CONTEXT = Context()
@@ -87,11 +90,40 @@ def trace_matches(trace: RoutingTrace, spec: MoEModelSpec) -> bool:
     return (trace.n_layers, trace.n_experts, trace.top_k) == (spec.n_layers, spec.n_experts, spec.top_k)
 
 
+class TraceUnusable(ValueError):
+    """An explicitly given recording cannot provide the routing an experiment asked for."""
+
+
+def unusable_reason(trace: RoutingTrace, prior_steps: int, tokens: int, batch: int) -> str | None:
+    """Why ``trace`` cannot supply this window (``None``: it can)."""
+    if trace.batch != 1:
+        return f"the recording has batch {trace.batch}; a single-stream (decode) recording is needed"
+    need = prior_steps + batch * tokens
+    if len(trace.steps) < need:
+        return f"the recording has {len(trace.steps)} steps; {need} are needed"
+    return None
+
+
 def routing_source(spec: MoEModelSpec) -> str:
+    """What routing the experiments on ``spec`` actually used so far, from the routing log:
+    ``recorded (file)``, ``synthetic``, or both with counts when some fell back."""
     ctx = _CONTEXT
-    if ctx.trace is not None and trace_matches(ctx.trace, spec):
-        return f"recorded ({Path(ctx.trace_path).name if ctx.trace_path else 'trace'})"
-    return "synthetic"
+    uses = [u for u in ctx.routing_log if u["model"] == spec.name]
+    name = Path(ctx.trace_path).name if ctx.trace_path else "trace"
+    if not uses:  # nothing ran yet: say what would be used, without claiming it was
+        usable = ctx.trace is not None and trace_matches(ctx.trace, spec)
+        return f"recorded ({name}) where the recording is long enough" if usable else "synthetic"
+    recorded = sum(u["source"] == "recorded" for u in uses)
+    if recorded == len(uses):
+        return f"recorded ({name})"
+    if recorded == 0:
+        return "synthetic"
+    return f"recorded ({name}) for {recorded} of {len(uses)} experiment setups, synthetic for the rest"
+
+
+def routing_provenance() -> list[dict[str, Any]]:
+    """Every routing window the experiments drew, in order (model, size, source, reason)."""
+    return [dict(u) for u in _CONTEXT.routing_log]
 
 
 def _recorded(trace: RoutingTrace, prior_steps: int, tokens: int, batch: int) -> tuple[RoutingTrace, RoutingTrace] | None:
@@ -100,10 +132,7 @@ def _recorded(trace: RoutingTrace, prior_steps: int, tokens: int, batch: int) ->
     Batch row ``r`` follows its own disjoint window of the recording, so rows do not share
     routing.  The profiling part precedes every evaluation window.
     """
-    if trace.batch != 1:
-        return None
-    need = prior_steps + batch * tokens
-    if len(trace.steps) < need:
+    if unusable_reason(trace, prior_steps, tokens, batch) is not None:
         return None
     prior = RoutingTrace(trace.n_layers, trace.n_experts, trace.top_k, 1, trace.steps[:prior_steps])
     if batch > 1:
@@ -140,17 +169,37 @@ class Outcome:
 
 
 def traces(spec: MoEModelSpec, *, tokens: int, prior_steps: int = 32, batch: int = 1,
-           zipf_s: float = 0.8, stickiness: float = 0.6, seed: int = 7) -> tuple[RoutingTrace, RoutingTrace]:  # fmt: skip
-    """(profiling trace, held-out evaluation trace).
+           zipf_s: float = 0.8, stickiness: float = 0.6, seed: int = 7,
+           fallback: str = "error") -> tuple[RoutingTrace, RoutingTrace]:  # fmt: skip
+    """(profiling trace, held-out evaluation trace), and a routing-log entry saying where they
+    came from.
 
-    Cut from the recorded routing in the experiment context when it matches the model and is
-    long enough; otherwise from one seeded run of the synthetic generator.
+    With a recording in the experiment context that matches the model, the traces are cut from
+    it.  If that recording cannot supply the window (too short, or not single-stream), this
+    raises ``TraceUnusable`` -- a result must never be labelled "recorded" when it is not --
+    unless ``fallback="synthetic"`` asks for synthetic routing instead, which is then logged as a
+    fallback with its reason.  A model the recording does not describe, or no recording at all,
+    uses the seeded synthetic generator (logged as such).
     """
+    if fallback not in ("error", "synthetic"):
+        raise ValueError("fallback must be 'error' or 'synthetic'")
     ctx = _CONTEXT
-    if ctx.trace is not None and trace_matches(ctx.trace, spec):
-        recorded = _recorded(ctx.trace, prior_steps, tokens, batch)
-        if recorded is not None:
-            return recorded
+    use = {"model": spec.name, "tokens": tokens, "prior_steps": prior_steps, "batch": batch}
+    if ctx.trace is None:
+        reason = "no recording was given"
+    elif not trace_matches(ctx.trace, spec):
+        reason = "the recording is of another model shape"
+    else:
+        reason = unusable_reason(ctx.trace, prior_steps, tokens, batch)
+        if reason is None:
+            ctx.routing_log.append({**use, "source": "recorded", "reason": ""})
+            return _recorded(ctx.trace, prior_steps, tokens, batch)
+        if fallback != "synthetic":
+            raise TraceUnusable(f"{spec.name}: {reason} (window: {prior_steps} profiling steps + {batch} x "
+                                f"{tokens} evaluation steps). Record a longer trace, or ask for the synthetic "
+                                "fallback explicitly.")  # fmt: skip
+        reason = f"fallback: {reason}"
+    ctx.routing_log.append({**use, "source": "synthetic", "reason": reason})
     trace = synth_trace(prior_steps + tokens, spec.n_layers, spec.n_experts, spec.top_k, batch=batch,
                         zipf_s=zipf_s, stickiness=stickiness, seed=seed)  # fmt: skip
     return trace.split(prior_steps)

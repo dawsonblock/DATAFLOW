@@ -16,7 +16,7 @@ from __future__ import annotations
 import math
 from collections.abc import Hashable
 
-from basp.core.graph import OpNode
+from basp.core.graph import OpCode, OpNode
 from basp.core.tensor import FormatTable
 from basp.core.topology import Topology
 from basp.dataflow.base import (
@@ -71,7 +71,10 @@ class CostModel:
     def allowed(self, device: int, op: OpNode) -> bool:
         if op.pinned_device is not None and device != op.pinned_device:
             return False
-        if self.compute_devices is not None and device not in self.compute_devices:
+        # the embedding gather runs on whichever device stores the table, whatever the policy's
+        # compute devices: it is a row read, and moving the table instead would be absurd
+        gather = op.opcode is OpCode.EMBED and device == op.pinned_device
+        if self.compute_devices is not None and device not in self.compute_devices and not gather:
             return False
         return self.topology.devices[device].caps.supports(op.opcode)
 

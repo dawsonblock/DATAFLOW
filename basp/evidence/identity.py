@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import platform
 import subprocess
 from collections.abc import Mapping
@@ -19,13 +20,21 @@ import basp
 
 PACKAGE_DIR = Path(basp.__file__).resolve().parent
 REPO_DIR = PACKAGE_DIR.parent
-CONFIG_DIR = REPO_DIR / "configs"
+#: running from a source checkout (``configs/`` next to the package), or from an installation
+IN_CHECKOUT = (REPO_DIR / "pyproject.toml").is_file() and (REPO_DIR / "configs" / "hardware_gate.json").is_file()
+#: the configuration files: the checkout's ``configs/``, or the copy packaged with an installation
+CONFIG_DIR = REPO_DIR / "configs" if IN_CHECKOUT else PACKAGE_DIR / "_configs"
+
+
+def work_dir() -> Path:
+    """Where results go by default: the checkout, or the current directory of an installation."""
+    return REPO_DIR if IN_CHECKOUT else Path.cwd()
 
 #: source files whose change cannot alter a simulated number: rendering and decision logic, and
 #: the physical runtime with its verification and memory-domain code, which the simulator never
 #: imports (the runtime has its own fingerprint, ``basp.verification.parity_report``)
 _NOT_SIMULATION_FILES = {
-    "experiments/report.py", "experiments/report_v5.py", "experiments/gate.py",
+    "experiments/report.py", "experiments/report_v6.py", "experiments/gate.py",
     "backends/execution.py", "backends/cpu/backend.py", "backends/cpu/kernels.py",
     "models/quants.py", "models/gguf_tensors.py", "models/gguf_writer.py",
     "memory/domains.py", "memory/admission.py", "memory/migration.py", "memory/expert_cache.py",
@@ -122,3 +131,39 @@ def profile_identity(profile: Mapping[str, Any]) -> str:
         return obj
 
     return sha256_json(strip(profile))
+
+
+# -- the physical runtime and the machine that ran a measurement -----------------------------------
+#: code that executes a model: a change to any of it invalidates measurements made with it
+RUNTIME_SOURCES = ("runtime", "backends/execution.py", "backends/cpu/backend.py", "backends/cpu/kernels.py",
+                   "backends/torch_cpu", "models/quants.py", "models/gguf.py", "models/gguf_tensors.py",
+                   "memory/domains.py", "memory/admission.py", "memory/allocator.py")  # fmt: skip
+
+
+def runtime_fingerprint() -> str:
+    """Hash of the code that executes a model (runtime, backends, GGUF reading, memory domains)."""
+    h = hashlib.sha256()
+    for entry in RUNTIME_SOURCES:
+        path = PACKAGE_DIR / entry
+        files = sorted(path.rglob("*.py")) if path.is_dir() else [path]
+        for f in files:
+            h.update(f.relative_to(PACKAGE_DIR).as_posix().encode() + b"\0" + f.read_bytes() + b"\0")
+    return h.hexdigest()
+
+
+def machine_identity() -> str:
+    cpu = platform.processor() or ""
+    try:
+        with open("/proc/cpuinfo") as f:
+            cpu = next((line.split(":", 1)[1].strip() for line in f if line.startswith("model name")), cpu)
+    except OSError:
+        pass
+    return f"{platform.system()} {platform.machine()} {cpu} ({os.cpu_count()} logical CPUs)".strip()
+
+
+def files_fingerprint(paths) -> str:
+    """One hash over several source files (a measurement tool made of more than one module)."""
+    h = hashlib.sha256()
+    for path in sorted(Path(p) for p in paths):
+        h.update(path.name.encode() + b"\0" + path.read_bytes() + b"\0")
+    return h.hexdigest()

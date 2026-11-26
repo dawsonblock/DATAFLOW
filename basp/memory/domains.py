@@ -17,6 +17,12 @@ and that the accounting matches the underlying allocator to the byte.
 Blocks are reference counted: a block that is in use (by a running kernel, or as the source
 of a migration in flight) has a reference and cannot be evicted; releasing the last
 reference frees it.  Eviction picks only unreferenced, unpinned blocks.
+
+**Ownership.**  Whoever keeps data for a block (a weight cache holding the arrays, a prefix
+cache holding KV rows) registers ``on_reclaim`` when it allocates.  There is exactly one
+reclamation path, ``free_block``, and it calls the owner *before* the capacity is released, so
+no owner is ever left holding arrays or a handle for memory the domain reports as free --
+whoever triggers the reclamation (the owner itself, admission control, ``evict``).
 """
 
 from __future__ import annotations
@@ -60,6 +66,12 @@ class Block:
     refs: int = 0
     last_use: int = 0
     allocation: Allocation | None = field(default=None, repr=False)
+    #: the owner's invalidation hook, called by ``free_block`` before the capacity is released
+    on_reclaim: Callable[[Block], None] | None = field(default=None, repr=False)
+
+    @property
+    def live(self) -> bool:
+        return self.allocation is not None
 
     @property
     def evictable(self) -> bool:
@@ -140,8 +152,10 @@ class MemoryDomain:
         return need <= self.headroom(category) and self._alloc.can_fit(size)
 
     def allocate(self, size: int, category: Category, owner: str, *, device: str | None = None,
-                 pinned: bool = False, refs: int = 0) -> Block:  # fmt: skip
-        """Allocate or refuse; never over-commit the pool or a category's limit."""
+                 pinned: bool = False, refs: int = 0,
+                 on_reclaim: Callable[[Block], None] | None = None) -> Block:  # fmt: skip
+        """Allocate or refuse; never over-commit the pool or a category's limit.  ``on_reclaim``
+        is the owner's hook: it must drop whatever the owner keeps for the block."""
         if size <= 0:
             raise ValueError("allocation size must be positive")
         if device is not None and self.devices and device not in self.devices:
@@ -156,7 +170,7 @@ class MemoryDomain:
             raise OutOfMemory(f"{self.name}: cannot allocate {size} bytes for {owner} ({self.free} free, "
                               f"largest block {self._alloc.largest_free_block})")  # fmt: skip
         block = Block(next(self._ids), self.name, category, allocation.size, int(size), owner, device, pinned,
-                      refs, next(self._clock), allocation)  # fmt: skip
+                      refs, next(self._clock), allocation, on_reclaim)  # fmt: skip
         self._blocks[block.block_id] = block
         self._used[category] += block.size
         self.peak = max(self.peak, self.used)
@@ -182,13 +196,16 @@ class MemoryDomain:
         block.last_use = next(self._clock)
 
     def free_block(self, block: Block) -> None:
-        """Free a block; refused while it is referenced or pinned."""
+        """Free a block; refused while it is referenced or pinned.  The only reclamation path:
+        the owner's ``on_reclaim`` runs first, so its entry is gone before the capacity is free."""
         self._live(block)
         if block.refs:
             raise EvictionUnsafe(f"{block.owner}: still referenced ({block.refs}); cannot free")
         if block.pinned:
             raise EvictionUnsafe(f"{block.owner}: pinned; unpin before freeing")
         assert block.allocation is not None
+        if block.on_reclaim is not None:
+            block.on_reclaim(block)  # may raise: then nothing was freed
         self._alloc.free(block.allocation)
         self._used[block.category] -= block.size
         del self._blocks[block.block_id]

@@ -75,5 +75,20 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
           python -m pip install -e ".[dev,verify]"
-      - name: Runtime and verification tests
-        run: python -m pytest -q tests/test_v04_runtime.py tests/test_v04_verification.py
+      - name: Runtime and verification tests (the transformers comparison is required, not skippable)
+        env:
+          BASP_REQUIRE_REFERENCE: "1"
+        run: python -m pytest -q tests/test_v04_runtime.py tests/test_v04_verification.py tests/test_v06_runtime_repairs.py
+
+  package:
+    name: Installable package (wheel and sdist, outside the checkout)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Build, install into clean environments, smoke-test
+        run: |
+          python -m pip install --upgrade pip build
+          python -m benchmarks.release_check

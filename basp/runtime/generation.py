@@ -20,13 +20,25 @@ class GenerationResult:
 
 def generate(session: Session, prompt: Iterable[int], max_new_tokens: int, *, stop: Iterable[int] = (),
              temperature: float = 0.0, seed: int = 0, keep_logits: bool = False) -> GenerationResult:  # fmt: skip
+    """Generate up to ``max_new_tokens`` tokens.
+
+    ``session`` is fresh or already holds a proper prefix of ``prompt`` (continuation).  A call
+    that returns ``N > 0`` tokens leaves the session holding ``prompt + returned[:-1]``: the last
+    returned token is pending, so ``generate(session, prompt + returned, ...)`` continues.
+    """
     prompt = [int(t) for t in prompt]
     if not prompt:
         raise ValueError("generation needs a non-empty prompt")
+    if max_new_tokens < 0:
+        raise ValueError("max_new_tokens must be non-negative")
+    if not session.holds_prefix_of(prompt):
+        raise ValueError("the session must be fresh or hold a proper prefix of the prompt")
     stop = set(stop)
     rng = np.random.default_rng(seed)
     result = GenerationResult(prompt)
-    logits = session.prefill(prompt).logits[-1]
+    if max_new_tokens == 0:
+        return result
+    logits = session.prefill(prompt[session.position:]).logits[-1]
     for _ in range(max_new_tokens):
         if keep_logits:
             result.logits.append(logits.copy())

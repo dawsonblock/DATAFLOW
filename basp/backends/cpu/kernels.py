@@ -86,15 +86,25 @@ def moe_router(x: np.ndarray, gate_inp: np.ndarray, top_k: int,
     return order, weights.astype(np.float32), logits
 
 
-def moe_experts(x: np.ndarray, experts: np.ndarray, weights: np.ndarray, expert_weights) -> np.ndarray:
+def moe_experts(x: np.ndarray, experts: np.ndarray, weights: np.ndarray, expert_weights, *,
+                only=None, out: np.ndarray | None = None) -> np.ndarray:  # fmt: skip
     """Weighted sum of the selected experts' SwiGLU outputs.
 
     ``expert_weights(e) -> (gate, up, down)`` fetches one expert's matrices (so a caller can
     dequantise or cache experts on demand).  Tokens routed to the same expert are batched.
+
+    Experts are accumulated in ascending index order.  ``only`` restricts the call to some of
+    the selected experts and ``out`` continues an accumulation started by an earlier call, so a
+    layer can be computed in several bounded groups (ascending, disjoint) with exactly the
+    additions, in exactly the order, of a single call.
     """
-    out = np.zeros((x.shape[0], x.shape[1]), np.float32)
-    for e in np.unique(experts):
+    if out is None:
+        out = np.zeros((x.shape[0], x.shape[1]), np.float32)
+    selected = np.unique(experts) if only is None else np.sort(np.asarray(list(only), dtype=np.int64))
+    for e in selected:
         rows, slots = np.nonzero(experts == e)
+        if rows.size == 0:
+            continue
         gate, up, down = expert_weights(int(e))
         y = swiglu(x[rows], gate, up, down)
         out[rows] += weights[rows, slots][:, None] * y

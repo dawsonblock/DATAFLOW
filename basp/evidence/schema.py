@@ -51,6 +51,13 @@ class Metric:
     minimum: float | None = 0.0  # values below are invalid (None: unbounded)
     maximum: float | None = None
     description: str = ""
+    #: which way is better.  Several applicable receipts are combined conservatively: the
+    #: verdict uses the worst of them, so a failing measurement can never be outvoted or dropped.
+    higher_is_better: bool = True
+
+    def worst(self, values) -> float:
+        values = [float(v) for v in values]
+        return min(values) if self.higher_is_better else max(values)
 
 
 METRICS: dict[str, Metric] = {m.name: m for m in (
@@ -58,10 +65,15 @@ METRICS: dict[str, Metric] = {m.name: m for m in (
     Metric("energy_ratio", "x", 0.0, description="candidate tokens per joule over the baseline's"),
     Metric("cost_efficiency_ratio", "x", 0.0, description="candidate tokens/s per dollar over the baseline's"),
     Metric("scaling_efficiency", "fraction", 0.0, 2.0, description="speed-up from one to N modules, divided by N"),
-    Metric("calibration_error", "fraction", 0.0, description="relative error of predictions on held-out measurements"),
-    Metric("scheduler_overhead", "fraction", 0.0, description="scheduling time over execution time"),
-    Metric("numerical_error", "relative L2", 0.0, description="relative L2 error against an independent reference"),
-    Metric("model_quality", "relative perplexity", 0.0, description="perplexity relative to the reference runtime"),
+    Metric("calibration_error", "fraction", 0.0, description="relative error of predictions on held-out measurements",
+           higher_is_better=False),
+    Metric("scheduler_overhead", "fraction", 0.0, description="scheduling time over execution time",
+           higher_is_better=False),
+    Metric("numerical_error", "relative L2", 0.0, description="relative L2 error against an independent reference",
+           higher_is_better=False),
+    Metric("model_quality", "relative perplexity", 0.0, description="perplexity relative to the reference runtime",
+           higher_is_better=False),
+    Metric("request_speedup", "x", 0.0, description="baseline request latency over the candidate's, same requests"),
     Metric("tokens_per_s", "tokens/s", 0.0, description="measured or simulated throughput"),
     Metric("weight_traffic_reduction", "fraction", None, 1.0, description="weight bytes moved, relative reduction"),
 )}  # fmt: skip

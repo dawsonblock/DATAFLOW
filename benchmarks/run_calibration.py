@@ -45,18 +45,21 @@ from basp.calibration import MeasurementSet
 from basp.calibration.plan import plan_runs
 from basp.core.topology import Topology
 from basp.evidence import (
+    CONFIG_DIR,
+    IN_CHECKOUT,
     REPO_DIR,
     environment,
     file_identity,
     git_state,
     profile_identity,
     sha256_file,
+    work_dir,
 )
 from basp.experiments.calibrate import fit_profile, score, staleness
 from basp.experiments.profiles import load_json
 from benchmarks.run_llama_bench import BenchModel, resolve_model, run_one
 
-PLAN = REPO_DIR / "configs" / "calibration_plan.json"
+PLAN = CONFIG_DIR / "calibration_plan.json"
 
 
 def run_key(run: dict[str, Any], identity: dict[str, Any] | None = None) -> tuple:
@@ -169,7 +172,7 @@ def main(argv: list[str] | None = None) -> int:
     plan = json.loads(args.plan.read_text())
     runs = plan_runs(plan, args.machine)
     profile_name = args.prior or plan["machines"][args.machine]["profile"]
-    evidence = args.evidence or REPO_DIR / "evidence" / args.machine
+    evidence = args.evidence or work_dir() / "evidence" / args.machine
     n_cal = sum(r["split"] == "calibration" for r in runs)
     print(f"plan v{plan['version']} ({sha256_file(args.plan)[:12]}): {len(runs)} configurations for "
           f"{args.machine} ({n_cal} calibration, {len(runs) - n_cal} validation)")  # fmt: skip
@@ -225,7 +228,10 @@ def main(argv: list[str] | None = None) -> int:
         if verdict["status"] != "pass":
             raise SystemExit("validation did not pass: the fitted profile is not written to configs/ "
                              "(it is in the evidence folder for diagnosis)")
-        target_profile = REPO_DIR / "configs" / f"{plan['machines'][args.machine]['profile']}.json"
+        if not IN_CHECKOUT:
+            raise SystemExit("--update-profile writes configs/ of a source checkout; run it from a checkout "
+                             f"(the fitted profile is in {evidence})")  # fmt: skip
+        target_profile = CONFIG_DIR / f"{plan['machines'][args.machine]['profile']}.json"
         shutil.copyfile(evidence / "profile_fitted.json", target_profile)
         print(f"updated {target_profile.relative_to(REPO_DIR)}")
     print(f"wrote {evidence.relative_to(REPO_DIR) if evidence.is_relative_to(REPO_DIR) else evidence}/; commit it")

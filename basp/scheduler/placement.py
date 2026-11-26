@@ -51,6 +51,23 @@ def _place_trunk(program: ModelProgram, residency: ResidencyMap, report: Placeme
         _place(residency, report, program.kv[layer], device, pinned=True)
 
 
+def place_auxiliary(program: ModelProgram, residency: ResidencyMap,
+                    report: PlacementReport | None = None) -> None:  # fmt: skip
+    """Place the weights outside the layers and the output projection, after any placement:
+    the embedding table in host memory (where inference engines keep it; the lookup's result
+    travels to the first trunk device) and the final norm with the last layer's trunk.
+    Idempotent."""
+    report = report if report is not None else PlacementReport("auxiliary")
+    for tensor, device in program.auxiliary_placement(residency.topology.host):
+        if not residency.copies(tensor):
+            _place(residency, report, tensor, device, pinned=True)
+    table = program.embedding_table()
+    if table is not None and program.embed_device is None:
+        holders = residency.copies(table)
+        # the lookup runs where the table is; a tied table is read from its first holder
+        program.embed_device = holders[0].device if holders else None
+
+
 def place_single(program: ModelProgram, residency: ResidencyMap, device: int) -> PlacementReport:
     """Everything on one device (CPU-only, or GPU-only when the model fits)."""
     report = PlacementReport("single")

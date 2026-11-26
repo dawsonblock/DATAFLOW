@@ -8,15 +8,22 @@ tokens; perplexity at most ``model_quality_relative_perplexity_max`` times the r
 
 from __future__ import annotations
 
-import hashlib
 import os
-import platform
 import time
+from pathlib import Path
 from typing import Any
 
 import numpy as np
 
-from basp.evidence import PACKAGE_DIR, EvidenceLevel, Receipt, file_identity, sha256_json
+from basp.evidence import (
+    EvidenceLevel,
+    Receipt,
+    file_identity,
+    machine_identity,
+    runtime_fingerprint,
+    sha256_json,
+    validity,
+)
 
 from .generation import compare_generation, reference_greedy
 from .intermediate_tensors import compare_hidden
@@ -25,30 +32,8 @@ from .perplexity import perplexity
 from .reference_runtime import load_reference, reference_forward
 from .routing import compare_routing
 
-RUNTIME_SOURCES = ("runtime", "backends/execution.py", "backends/cpu/backend.py", "backends/cpu/kernels.py",
-                   "backends/torch_cpu",
-                   "models/quants.py", "models/gguf.py", "models/gguf_tensors.py", "memory/domains.py")  # fmt: skip
-
-
-def runtime_fingerprint() -> str:
-    """Hash of the code that executes a model (runtime, CPU backend, GGUF reading)."""
-    h = hashlib.sha256()
-    for entry in RUNTIME_SOURCES:
-        path = PACKAGE_DIR / entry
-        files = sorted(path.rglob("*.py")) if path.is_dir() else [path]
-        for f in files:
-            h.update(f.relative_to(PACKAGE_DIR).as_posix().encode() + b"\0" + f.read_bytes() + b"\0")
-    return h.hexdigest()
-
-
-def machine_identity() -> str:
-    cpu = platform.processor() or ""
-    try:
-        with open("/proc/cpuinfo") as f:
-            cpu = next((line.split(":", 1)[1].strip() for line in f if line.startswith("model name")), cpu)
-    except OSError:
-        pass
-    return f"{platform.system()} {platform.machine()} {cpu} ({os.cpu_count()} logical CPUs)".strip()
+#: the measuring tool: this package's comparison code
+TOOL_FILES = sorted(Path(__file__).parent.glob("*.py"))
 
 
 def run_parity(path: str | os.PathLike, prompt: list[int], *, model_name: str, eval_tokens: list[int] | None = None,
@@ -111,6 +96,11 @@ def run_parity(path: str | os.PathLike, prompt: list[int], *, model_name: str, e
     result["telemetry"] = engine.telemetry.to_json()
     result["runtime_fingerprint"] = runtime_fingerprint()
     result["backend"] = sorted(set(engine.plan.assignment.values()))
+    result["identity"] = validity.measurement_identity(
+        tool="basp.verification.parity_report", tool_files=TOOL_FILES, models={"model": path},
+        parameters={"prompt_tokens": len(prompt), "generated": n_generate,
+                    "perplexity_tokens": len(eval_tokens or [])},
+        backend="+".join(result["backend"]))  # fmt: skip
     result["receipts"] = [r.to_json() for r in parity_receipts(result, model_name=model_name)]
     return result
 

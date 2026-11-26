@@ -42,6 +42,17 @@ Both profiles are **uncalibrated priors** built from public specifications. Set 
 4. **Calibration validates the model of the existing machine, nothing else.** Performance,
    power and price of compute-memory modules remain estimates with ranges
    (`configs/design_estimates.json`).
+5. **A pass covers only the regimes that were validated (v0.6).** Each successful validation
+   observation is tagged with the regime it exercised: dense or MoE, CPU only, split layers, all
+   layers on the GPU, experts on the CPU (`--n-cpu-moe`), long context, decode or prefill, and
+   whether energy was measured (`basp.calibration.observed_coverage`). A candidate states the regimes
+   its gate regime needs (`required_regimes`: a model that does not fit the GPU needs split or
+   experts-on-CPU observations, a long context needs long-context observations, an energy criterion
+   needs energy measurements). A criterion whose required regimes have fewer than
+   `min_validation_per_regime` successful observations (`configs/hardware_gate.json`, 2) is *not
+   evaluated*, however small the pooled validation error: eight dense CPU measurements cannot
+   validate a prediction about a MoE model with experts on the CPU. Failed runs (e.g. out of GPU
+   memory) count for nothing.
 
 ## The plan
 

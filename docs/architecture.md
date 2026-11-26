@@ -1,4 +1,4 @@
-# BASP Dataflow v0.5 — architecture of the implementation
+# BASP Dataflow v0.6 — architecture of the implementation
 
 This document describes what is implemented in this repository and how the pieces map onto the
 BASP Adaptive Dataflow Architecture. The first part covers the dataflow engine (v0.1); then
@@ -314,6 +314,65 @@ the prefix.
 the same operations, selected by the plan when preferred, and verified against transformers by
 the same harness. It exists because NumPy's BLAS multiplies 2–9 rows by a matrix at about four
 times the cost of one row, which hides the benefit of verifying several tokens per pass.
+
+## Repairs: ownership, bounds and identities (v0.6)
+
+**Expert memory.** Every block in a memory domain may carry an `on_reclaim` hook, called by the
+one path that frees blocks (`MemoryDomain.free_block`). The weight store registers a hook for each
+cached expert, so a block reclaimed by anyone (eviction, admission of other data, `clear`) also
+removes the cache entry: no entry can outlive its memory. Acquisition is transactional:
+
+```
+WeightStore.groups(layer, experts)   split the layer's distinct experts into groups that fit the
+                                     ceiling (decoded bytes + dequantisation scratch per format)
+WeightStore.acquired(layer, group)   reserve room first (evicting unreferenced experts), then
+                                     load; any failure releases everything this call took
+moe_experts(..., only=group, out=y)  accumulate the group's contribution in ascending expert
+                                     order: the same sum, in the same order, as one big group
+```
+
+so the decoded expert arrays never exceed `expert_cache_bytes`, a layer whose experts do not fit
+is processed in several groups, and a request that cannot be served fails with
+`ExpertBudgetExceeded` leaving the store as it was (`check_invariant`).
+
+**Generation state.** After `generate` or `speculative_generate` returns N tokens the session holds
+`prompt + tokens[:-1]` (the last token is returned but not yet fed), so a call with the longer
+prompt continues it without recomputation; stops and length limits cut before the KV cache is
+trimmed. Sampling acceptance uses point masses for the proposals, so its memory is linear in the
+vocabulary.
+
+**Simulator accounting.** The lowering now emits the embedding lookup (`OpCode.EMBED`), the final
+norm and shared experts, and stores tied embeddings once. The lookup is pinned to the device that
+stores the table (the host for an untied table, whatever the policy's compute devices), so each
+step moves the looked-up rows, never the table. `basp/verification/reconcile.py`
+compares a lowered step with an independent dimensional count of parameters, bytes and
+multiply-accumulates. `Context.routing_log` records, for each experiment, whether its routing came
+from a recording or was synthetic; an explicit recording that cannot supply a window raises
+`TraceUnusable` instead of falling back silently.
+
+**Evidence.** Receipts are deduplicated by `measurement_id` (content hash), and when several
+receipts qualify a criterion the worst value decides (`Metric.higher_is_better`). Validation rows
+carry their placement (`n_gpu_layers`, `n_cpu_moe`, context), from which
+`basp/calibration/coverage.py` derives the regimes observed; the gate's calibration criterion
+requires the candidate's regimes. Every runtime measurement stores a complete identity (runtime
+fingerprint, tool hash, machine, model files by sha256, parameters) and is judged by one rule
+(`basp/evidence/validity.py`) that every report table renders the same way.
+
+**Request-latency studies.** `basp/bench/` is the measurement protocol of
+`configs/benchmark_protocol.json`:
+
+```
+Protocol.schedule(study, comparison)   paired trials, AB/BA alternating per prompt, shuffled order
+BaspArms.request / NativeArm.request   one request each: latency, tokens, work and I/O counters,
+                                       memory; failures recorded, never retried silently
+analyze(...)                           per-prompt geometric mean of paired ratios, equal-weight
+                                       geometric mean over prompts, stratified prompt bootstrap
+decide(...)                            meets_criterion / below_criterion / inconclusive / slower /
+                                       category_regression; exploratory studies never decide
+```
+
+`Protocol.freeze` fingerprints a comparison's definition (arms, prompts, criteria, pinned setup);
+a decision study refuses to run unless that fingerprint is frozen and unchanged.
 
 ## Extending
 

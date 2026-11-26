@@ -135,6 +135,7 @@ def evaluate_calibration(
         ok = _usable(predicted)
         rel = abs(predicted - measured) / measured if ok else None
         rows.append({"id": m.id, "machine": m.machine, "model": m.model, "kind": m.kind, "split": m.split,
+                     "n_gpu_layers": m.n_gpu_layers, "n_cpu_moe": m.n_cpu_moe, "context_len": m.context_len,
                      "repetitions": len(members), "measured": measured,
                      "predicted": float(predicted) if ok else None, "rel_error": rel})  # fmt: skip
         if ok:

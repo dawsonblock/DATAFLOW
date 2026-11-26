@@ -21,7 +21,7 @@ from basp.dataflow.predictive import Prefetcher
 from basp.memory.replication import ReplicaManager
 from basp.memory.residency import ResidencyMap
 from basp.memory.tensor_registry import TensorRegistry
-from basp.scheduler.placement import PlacementReport
+from basp.scheduler.placement import PlacementReport, place_auxiliary
 from basp.scheduler.predictor import ExpertPredictor
 from basp.scheduler.scheduler import Scheduler
 from basp.workloads.model import MoEModelSpec
@@ -103,6 +103,7 @@ def build(
                            expert_shards=expert_shards, fused=fused, prompt=prompt)  # fmt: skip
     residency = ResidencyMap(registry, topology)
     placement = place(program, residency)
+    place_auxiliary(program, residency, placement)  # embedding table and final norm
     predictor = ExpertPredictor(spec.n_layers, spec.n_experts)
     if prior is not None:
         predictor.fit(prior)

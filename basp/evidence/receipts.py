@@ -44,7 +44,16 @@ class Receipt:
 
     @property
     def receipt_id(self) -> str:
+        """Hash of the whole record (note included): names this record, never ranks it."""
         return sha256_json(self.content())[:16]
+
+    @property
+    def measurement_id(self) -> str:
+        """Hash of what was observed -- everything but the free-text note.  Two receipts with the
+        same measurement id are one observation, however they are annotated."""
+        content = self.content()
+        content.pop("note", None)
+        return sha256_json(content)[:16]
 
     def content(self) -> dict[str, Any]:
         data = asdict(self)

@@ -14,6 +14,7 @@ from basp.backends.cpu import NumericPayload
 from basp.core.capabilities import DeviceCapabilities, DeviceKind
 from basp.core.graph import OpCode
 from basp.core.tensor import CompressionFormat as F
+from basp.core.tensor import activation_bytes
 from basp.core.topology import DeviceSpec, LinkSpec, PowerSpec, Topology
 from basp.dataflow.base import ALL_MODES, CachePolicy, DataflowMode, ExecutionPolicy, PrefetchPolicy
 from basp.experiments.harness import build
@@ -337,8 +338,10 @@ def test_tensor_parallel_output_traffic_halves_with_partial_sums():
                       expert_shards=2)  # fmt: skip
         trace = synth_trace(6, spec.n_layers, spec.n_experts, spec.top_k, seed=2)
         out[name] = setup.run(trace, tokens=6).link_bytes["output"]
-    # top_k = 2 experts on 2 modules: 4 partial outputs per layer pushed, 2 partial sums otherwise
-    assert out["summed"] == pytest.approx(out["pushed"] / 2)
+    # top_k = 2 experts on 2 modules: 4 partial outputs per layer pushed, 2 partial sums otherwise;
+    # both also move each token's embedding row from the host's table to the trunk
+    embed = 6 * activation_bytes(spec.hidden)
+    assert out["summed"] - embed == pytest.approx((out["pushed"] - embed) / 2)
 
 
 def test_routing_only_devices_carry_traffic_but_hold_nothing():

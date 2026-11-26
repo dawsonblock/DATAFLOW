@@ -67,8 +67,12 @@ def full_registry(**overrides) -> ReceiptRegistry:
     return registry
 
 
+#: what successful validation observations covered (v0.6): an energy claim needs energy measurements
+COVERED = {"energy": {"n": 2}}
+
+
 def gate(calibration, registry, cand=CAND, **kw):
-    args = {"comparison_on_calibrated_profile": True, "current": CURRENT}
+    args = {"comparison_on_calibrated_profile": True, "current": CURRENT, "coverage": COVERED}
     args.update(kw)
     return evaluate_gate(cand, THRESHOLDS, receipts=registry, calibration=calibration, **args)
 
@@ -82,6 +86,9 @@ def test_gate_opens_only_on_e2_simulation_and_e3_measurements(passing_calibratio
     decision = gate(passing_calibration, full_registry())
     assert decision.go and decision.verdict == "GO"
     assert by_name(decision)["Throughput improvement"].level is E2
+    # without validated energy measurements the energy ratio is outside the validation's scope
+    unmeasured = gate(passing_calibration, full_registry(), coverage={})
+    assert not unmeasured.go and by_name(unmeasured)["Energy efficiency"].status == "not_evaluated"
     # replace the measured scheduler overhead by an estimate: the gate closes
     registry = ReceiptRegistry(r for r in full_registry() if r.metric != "scheduler_overhead")
     registry.add(scheduler_receipt(CAND, plans_per_batch=40, batch_time_s=2e-3,

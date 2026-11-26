@@ -122,9 +122,16 @@ class TorchCPUBackend(ExecutionBackend):
         if k == "moe_experts":
             x, experts, weights, fetch = a
             xt = _t(x)
-            out = torch.zeros_like(xt)
-            for e in np.unique(experts):
+            # same contract as the NumPy kernel: ascending experts, ``only`` a group of them,
+            # ``out`` an accumulation to continue (bounded groups add in the single-call order)
+            acc = p.get("out")
+            out = torch.zeros_like(xt) if acc is None else torch.from_numpy(acc)
+            only = p.get("only")
+            selected = np.unique(experts) if only is None else np.sort(np.asarray(list(only), dtype=np.int64))
+            for e in selected:
                 rows, slots = np.nonzero(experts == e)
+                if rows.size == 0:
+                    continue
                 g, u, dn = (_t(m) for m in fetch(int(e)))
                 y = F.linear(F.silu(F.linear(xt[rows], g)) * F.linear(xt[rows], u), dn)
                 out[rows] += torch.from_numpy(weights[rows, slots])[:, None] * y

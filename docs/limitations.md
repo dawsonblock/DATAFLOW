@@ -1,4 +1,4 @@
-# Limitations of BASP Dataflow v0.5
+# Limitations of BASP Dataflow v0.6
 
 This release is a Python research system: a simulator, a scheduler, reference kernels, a
 design-space explorer, calibration tooling, an evidence-gated decision decided from receipts,
@@ -7,6 +7,32 @@ physical memory-domain management, and a CPU runtime that executes real GGUF mod
 architectures means "what the model concludes under the stated assumptions", and the gate's
 evidence column says which level (E0–E3) each claim has. The only measurements (E3) are the
 runtime's numerical parity with transformers, on the machine that ran the verification.
+
+## Repairs and the measurement protocol (new in v0.6)
+
+* **The protocol is proposed, not frozen, and no decision study has run.** Only exploratory
+  studies exist (tuning on the six development prompts; a feasibility study and timing pilot of the
+  30B model, if listed in report section 11). They cannot support any acceleration claim. Freezing
+  the protocol and running the decision study on the held-out prompts is for the target machine.
+* **No native-engine arm has ever run.** Arms C, D and E (stock llama.cpp, tuned llama.cpp, and
+  BASP's change inside it) are implemented against an OpenAI-compatible `/v1/completions` server,
+  tested only against a stand-in server. The competitive comparison (D vs E) has no data.
+* **One 4-core machine, CPU only.** Every study here ran on the development container: no GPU, a
+  shared host whose load the study cannot control beyond pairing and counterbalancing, and an OS
+  page cache the 30B model (18.6 GB) does not fit in.
+* **The expert ceiling bounds decoded expert arrays, not process memory.** Memory-mapped model
+  pages, Python objects and the KV cache come on top; the report shows the process's peak resident
+  memory separately. "Decoded bytes on misses" counts what the loader decoded, which may have come
+  from the page cache; only `/proc/self/io` read bytes are storage reads.
+* **Coverage tags are coarse.** A regime is dense/MoE x placement (CPU only, split layers, all on
+  GPU, experts on CPU) x long context x decode/prefill x energy. Two observations per required tag
+  is a minimum, not evidence of accuracy across, say, all `--n-cpu-moe` values.
+* **The lowering reconciliation is a consistency check.** It compares the simulator's lowered
+  graph with an independent dimensional count written from the same model shapes: it catches
+  omissions and double counts (it found the missing embedding, final norm and shared experts), not
+  a misunderstanding of the architecture shared by both.
+* **Earlier evidence is not applicable.** v0.5 speculative measurements carry no complete identity
+  and are shown NOT APPLICABLE; their numbers are kept as records only.
 
 ## Speculative execution (new in v0.5)
 

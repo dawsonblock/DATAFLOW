@@ -30,6 +30,8 @@ class NumericPayload:
                  tile_rows: int = 64) -> None:  # fmt: skip
         if x0.shape != (program.batch, model.spec.hidden):
             raise ValueError(f"x0 must have shape {(program.batch, model.spec.hidden)}")
+        if model.spec.n_shared_experts or model.spec.final_norm_params:
+            raise NumericError("the numeric model implements neither shared experts nor a final norm")
         self.model = model
         self.program = program
         self.tile_rows = tile_rows
@@ -96,6 +98,10 @@ class NumericPayload:
 
     def _logits(self, h: np.ndarray, layer: int) -> np.ndarray:
         return (h @ self.model.router[layer].T).astype(np.float32)
+
+    def _op_embed(self, op: OpNode, plan: ResolvedPlan) -> None:
+        # the lookup's value was set at the start of the step (the payload knows the token)
+        self._get(op.outputs[0], op.name)
 
     def _op_trunk(self, op: OpNode, plan: ResolvedPlan) -> None:
         layer = op.attrs["layer"]

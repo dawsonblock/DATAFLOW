@@ -78,6 +78,38 @@ that does not pay is switched off, not hidden. Wall-clock figures from this runt
 comparisons with llama.cpp or KTransformers; such a comparison needs those engines on the same
 machine.
 
+## Request-latency studies (v0.6)
+
+Any claim that something is faster comes from a study under `configs/benchmark_protocol.json`
+(`basp/bench/`, `python -m benchmarks.run_study`), never from an ad-hoc run:
+
+- The primary outcome is end-to-end request latency for exactly the requested tokens, in paired,
+  counterbalanced (AB/BA) trials at concurrency 1. The prompt is the independent unit: the result
+  is the equal-weight geometric mean of per-prompt paired ratios, with a prompt-level bootstrap
+  stratified by category. An interval that includes 1 is *inconclusive*.
+- Tuning (`run_study tune`) uses only the development prompts and only the protocol's listed
+  candidates. Then `run_study freeze --comparison <c>` fixes the protocol (fingerprinted). Only a
+  frozen decision study on the held-out prompts can support a decision; feasibility studies,
+  pilots (`--tokens`, `--limit-prompts`, `--repetitions`) and tuning are exploratory.
+- **Never add prompts, repetitions or candidates, change criteria or re-tune after seeing a
+  decision result.** A changed protocol is a new version and a new study. Do not freeze or run a
+  decision study for the user without being asked.
+- Arms A/B (this runtime) are internal; the competitive comparison is D (tuned native engine) vs
+  E (BASP's change inside that engine). Native arms need a running server pinned in the protocol
+  (`setup.native`: revision, binary hash, command). None has been run from this repository.
+- Before a native intervention, compute its headroom from a profile
+  (`run_study headroom --fraction f --reduction r`): `1/(1 - f r)`. If it cannot reach the
+  criterion, do not build it.
+- Studies carry complete identities (`basp.evidence.validity`): a study measured by other runtime
+  or tool code is shown NOT APPLICABLE in the report. Rerun it; never relabel it.
+
+## Packaging
+
+`python -m benchmarks.release_check --require-reference` builds the wheel and sdist, installs each
+in a clean environment outside the checkout and runs the commands, a tiny model end to end and the
+reference verification (torch and transformers; with `BASP_REQUIRE_REFERENCE=1` a missing reference
+is a failure, not a skip). Configurations ship inside the package (`basp/_configs`, `setup.py`).
+
 ## Development
 
 - `python -m pytest -q` (about 4 minutes) and `ruff check .` must pass before every commit.

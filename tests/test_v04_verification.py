@@ -7,12 +7,19 @@ downloaded.  The harness must also *fail* a broken runtime: one test breaks it o
 
 from __future__ import annotations
 
+import os
+
 import numpy as np
 import pytest
 
-pytest.importorskip("torch")
-pytest.importorskip("transformers")
-pytest.importorskip("gguf")
+if os.environ.get("BASP_REQUIRE_REFERENCE"):  # a release that claims this verification: a skip is a failure
+    import gguf  # noqa: F401
+    import torch  # noqa: F401
+    import transformers  # noqa: F401
+else:
+    pytest.importorskip("torch")
+    pytest.importorskip("transformers")
+    pytest.importorskip("gguf")
 
 from basp.backends.cpu import kernels
 from basp.evidence import EvidenceLevel, Receipt

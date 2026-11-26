@@ -33,6 +33,7 @@ class OpCode(enum.IntEnum):
     ACT_MUL = 11
     ADD = 12
     TRUNK = 13  # fused normalisation + attention + routing block
+    EMBED = 14  # token-embedding lookup: reads one table row per token
 
 
 #: Implementation priority of each operation (section 13).
@@ -49,6 +50,7 @@ OP_PRIORITY: Mapping[OpCode, str] = {
     OpCode.ROPE: "P1",
     OpCode.KV_APPEND: "P1",
     OpCode.ROUTE: "P1",
+    OpCode.EMBED: "P1",
     OpCode.TRUNK: "P1",
 }
 

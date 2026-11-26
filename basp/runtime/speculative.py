@@ -17,10 +17,20 @@ Acceptance keeps the target's output exact:
   target's distribution exactly (Leviathan et al. 2023; Chen et al. 2023).  A deterministic
   drafter has ``q`` = one-hot.
 
-Rejected proposals are discarded by truncating the KV cache.  ``AdaptiveController`` chooses
-``k`` before each round from the measured acceptance rate and the measured cost of drafting and
-of verifying ``n`` rows, maximising expected accepted tokens per second; ``k = 0`` is ordinary
-one-token decoding.
+A deterministic drafter has ``q`` = one-hot, which needs no vocabulary-sized matrix: the proposal
+is accepted with probability ``p(x)``, and on rejection the residual is ``p`` with ``p(x)`` removed.
+
+**State contract.**  A call that returns ``N > 0`` tokens leaves the target session holding
+``prompt + returned[:-1]`` (the last returned token is pending: feed it to continue), at position
+``len(prompt) + N - 1`` -- whatever was drafted, verified or accepted along the way.  Stop tokens
+and the length limit are applied *before* the committed position is computed, and everything
+speculative beyond it is removed.  A later call may continue from that session.  The result
+separates work from output: ``proposed``/``verified``/``accepted`` count candidates, ``returned``
+counts tokens handed to the caller; work done beyond a stop still appears in the cost.
+
+``AdaptiveController`` chooses ``k`` before each round from the measured acceptance rate and the
+measured cost of drafting and of verifying ``n`` rows, maximising expected accepted tokens per
+second; ``k = 0`` is ordinary one-token decoding.
 """
 
 from __future__ import annotations
@@ -185,14 +195,17 @@ class AdaptiveController:
 
 @dataclass
 class Round:
-    proposed: int
-    accepted: int
-    emitted: int
-    rows: int
+    proposed: int  # candidates the drafter produced
+    verified: int  # candidates the target scored (rows beyond the pending token)
+    accepted: int  # candidates the acceptance rule kept, before stop and length limits
+    returned: int  # tokens of this round handed to the caller
+    rows: int  # rows the target processed in this pass
     draft_s: float
     verify_s: float
-    expert_requests: int
-    expert_bytes: int
+    expert_requests: int  # logical: unique experts the pass needed, summed over layers
+    expert_logical_bytes: int  # logical: stored size of those experts (not bytes moved)
+    expert_misses: int  # of those, experts that had to be loaded
+    expert_decoded_stored_bytes: int  # quantised bytes the loader processed for the misses
 
 
 @dataclass
@@ -205,8 +218,9 @@ class SpeculativeResult:
 
     @property
     def acceptance(self) -> float:
-        proposed = sum(r.proposed for r in self.rounds)
-        return sum(r.accepted for r in self.rounds) / proposed if proposed else 0.0
+        """Accepted candidates over verified candidates (before stop and length limits)."""
+        verified = sum(r.verified for r in self.rounds)
+        return sum(r.accepted for r in self.rounds) / verified if verified else 0.0
 
     @property
     def tokens_per_target_call(self) -> float:
@@ -214,14 +228,18 @@ class SpeculativeResult:
 
     def summary(self) -> dict[str, Any]:
         n = max(len(self.tokens), 1)
-        return {"tokens": len(self.tokens), "target_calls": len(self.rounds), "acceptance": self.acceptance,
+        total = lambda name: sum(getattr(r, name) for r in self.rounds)
+        return {"returned_tokens": len(self.tokens), "target_calls": len(self.rounds),
+                "proposed": total("proposed"), "verified": total("verified"), "accepted": total("accepted"),
+                "acceptance": self.acceptance, "target_rows": total("rows"),
                 "tokens_per_target_call": self.tokens_per_target_call, "seconds": self.seconds,
                 "tokens_per_s": len(self.tokens) / self.seconds if self.seconds else 0.0,
-                "draft_seconds": sum(r.draft_s for r in self.rounds),
-                "verify_seconds": sum(r.verify_s for r in self.rounds),
-                "expert_requests_per_token": sum(r.expert_requests for r in self.rounds) / n,
-                "expert_bytes_per_token": sum(r.expert_bytes for r in self.rounds) / n,
-                "k_histogram": dict(sorted(_count(r.proposed for r in self.rounds).items()))}  # fmt: skip
+                "draft_seconds": total("draft_s"), "verify_seconds": total("verify_s"),
+                "expert_requests_per_token": total("expert_requests") / n,
+                "expert_logical_bytes_per_token": total("expert_logical_bytes") / n,
+                "expert_misses_per_token": total("expert_misses") / n,
+                "expert_decoded_stored_bytes_per_token": total("expert_decoded_stored_bytes") / n,
+                "k_histogram": dict(sorted(_count(r.verified for r in self.rounds).items()))}  # fmt: skip
 
 
 def _count(values: Iterable[int]) -> dict[int, int]:
@@ -231,33 +249,62 @@ def _count(values: Iterable[int]) -> dict[int, int]:
     return out
 
 
+def accept_or_resample(p: np.ndarray, proposed: int, q: np.ndarray | None,
+                       rng: np.random.Generator) -> tuple[bool, int]:  # fmt: skip
+    """One step of speculative sampling: ``(accepted, token)``.
+
+    ``p``: the target's distribution; ``q``: the drafter's, or ``None`` for a deterministic
+    proposal (a point mass on ``proposed``).  The returned token is distributed exactly as ``p``.
+    Auxiliary memory is linear in the vocabulary in both cases.
+    """
+    if q is None:  # point mass: accept with probability p[proposed]; the residual is p without it
+        if rng.random() < p[proposed]:
+            return True, proposed
+        residual = p.copy()
+        residual[proposed] = 0.0
+    else:
+        if rng.random() < min(1.0, p[proposed] / q[proposed]):
+            return True, proposed
+        residual = np.maximum(p - q, 0.0)
+    total = residual.sum()
+    if not total > 0.0:  # p == q up to rounding: nothing to correct
+        return False, int(rng.choice(len(p), p=p))
+    return False, int(rng.choice(len(p), p=residual / total))
+
+
 def speculative_generate(target: Session, drafter: Drafter | None, prompt: Iterable[int], max_new_tokens: int, *,
                          k: int = 4, controller: AdaptiveController | None = None, temperature: float = 0.0,
                          stop: Iterable[int] = (), seed: int = 0) -> SpeculativeResult:  # fmt: skip
-    """Generate with ``drafter`` proposing and ``target`` verifying.  ``target`` must be a fresh
-    session; with ``controller`` the draft length adapts, otherwise it is ``k``."""
+    """Generate with ``drafter`` proposing and ``target`` verifying.
+
+    ``target`` is a fresh session, or one that already holds a proper prefix of ``prompt`` (for
+    example the session of an earlier call, continued with ``prompt + returned``).  With
+    ``controller`` the draft length adapts, otherwise it is ``k``.  See the module's state contract.
+    """
     prompt = [int(t) for t in prompt]
     if not prompt:
         raise ValueError("generation needs a non-empty prompt")
-    if target.position:
-        raise ValueError("speculative generation starts from an empty session")
+    if max_new_tokens < 0:
+        raise ValueError("max_new_tokens must be non-negative")
+    if not target.holds_prefix_of(prompt):
+        raise ValueError("the session must be fresh or hold a proper prefix of the prompt")
     stop = set(stop)
     rng = np.random.default_rng(seed)
     tel = target.engine.telemetry
     result = SpeculativeResult(prompt)
     committed = list(prompt)
-    fed = 0  # tokens of ``committed`` in the target's KV cache
+    fed = target.position  # tokens of ``committed`` in the target's KV cache
     start = time.perf_counter()
-    while len(result.tokens) < max_new_tokens:
+    while len(result.tokens) < max_new_tokens and result.stopped != "stop_token":
         room = target.capacity - len(committed) - 1
-        remaining = max_new_tokens - len(result.tokens) - 1
-        limit = max(0, min(room, remaining))
+        remaining = max_new_tokens - len(result.tokens)
+        limit = max(0, min(room, remaining - 1))
         want = (controller.choose(limit=limit) if controller else min(k, limit)) if drafter is not None else 0
         t0 = time.perf_counter()
         proposal = drafter.propose(committed, want, temperature=temperature, rng=rng) if want else Proposal([])
         drafts = proposal.tokens[:want]
         t1 = time.perf_counter()
-        before = (tel.expert_requests, tel.expert_bytes)
+        before = (tel.expert_requests, tel.expert_logical_bytes, tel.expert_misses, tel.expert_decoded_stored_bytes)
         rows = committed[fed:] + drafts
         logits = target.prefill(rows, all_logits=True).logits
         t2 = time.perf_counter()
@@ -273,35 +320,35 @@ def speculative_generate(target: Session, drafter: Drafter | None, prompt: Itera
                     continue
                 new.append(choice)
                 break
-            p = _probs(row, temperature)
-            q = proposal.probs[i] if proposal.probs is not None else np.eye(len(p))[d]
-            if rng.random() < min(1.0, p[d] / q[d]):
-                accepted += 1
-                new.append(d)
-                continue
-            residual = np.maximum(p - q, 0.0)
-            new.append(int(rng.choice(len(p), p=residual / residual.sum())))
-            break
+            ok, token = accept_or_resample(_probs(row, temperature), d,
+                                           None if proposal.probs is None else proposal.probs[i], rng)  # fmt: skip
+            new.append(token)
+            if not ok:
+                break
+            accepted += 1
         else:  # every proposal accepted: the last row gives one more token
             row = logits[base + len(drafts)]
             new.append(int(np.argmax(row)) if temperature <= 0 else int(rng.choice(len(row), p=_probs(row, temperature))))
-        fed = len(committed) + accepted
-        target.truncate(fed)  # rejected proposals leave the cache
-        round_ = Round(len(drafts), accepted, len(new), len(rows), t1 - t0, t2 - t1,
-                       tel.expert_requests - before[0], tel.expert_bytes - before[1])  # fmt: skip
-        result.rounds.append(round_)
+        # Output limits come first: cut at the first stop token and at the length limit, and only
+        # then decide what the session keeps.
+        kept = new[:remaining]
+        for i, token in enumerate(kept):
+            if token in stop:
+                kept = kept[:i + 1]
+                result.stopped = "stop_token"
+                break
+        # The cache keeps the committed context and every kept token but the last, which stays
+        # pending; anything verified beyond that -- accepted or not -- is removed.
+        fed = len(committed) + len(kept) - 1
+        target.truncate(fed)
+        committed.extend(kept)
+        result.tokens.extend(kept)
+        result.rounds.append(Round(
+            len(proposal.tokens), len(drafts), accepted, len(kept), len(rows), t1 - t0, t2 - t1,
+            tel.expert_requests - before[0], tel.expert_logical_bytes - before[1], tel.expert_misses - before[2],
+            tel.expert_decoded_stored_bytes - before[3]))  # fmt: skip
         if controller is not None:
             controller.update(proposed=len(drafts), accepted=accepted, draft_s=t1 - t0, rows=len(rows),
                               verify_s=t2 - t1)  # fmt: skip
-        for token in new:
-            committed.append(token)
-            result.tokens.append(token)
-            if token in stop:
-                result.stopped = "stop_token"
-                break
-            if len(result.tokens) >= max_new_tokens:
-                break
-        if result.stopped == "stop_token":
-            break
     result.seconds = time.perf_counter() - start
     return result

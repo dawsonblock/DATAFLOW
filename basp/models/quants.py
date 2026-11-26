@@ -125,6 +125,20 @@ _DEQUANT = {
 
 SUPPORTED = ("F32", "F16", "BF16", *_DEQUANT)
 
+#: Scratch memory ``dequantize`` needs while it runs, as a multiple of the float32 result
+#: (temporaries beyond the result itself).  Upper bounds on measured peaks (tracemalloc; the
+#: test suite re-measures every format).  A loader reserves this much before it starts.
+TRANSIENT_FACTOR = {"F32": 0.1, "F16": 0.1, "BF16": 1.25, "Q8_0": 1.25, "Q4_0": 1.25, "Q4_1": 1.25,
+                    "Q5_0": 3.25, "Q5_1": 3.25, "Q4_K": 2.25, "Q5_K": 2.75, "Q6_K": 2.5}  # fmt: skip
+
+
+def transient_bytes(ggml_type: int, n_elements: int) -> int:
+    """Scratch bytes to reserve for dequantising ``n_elements`` weights of ``ggml_type``."""
+    name = type_name(ggml_type)
+    if name not in TRANSIENT_FACTOR:
+        raise UnsupportedFormat(f"ggml type {name} is not supported by the NumPy runtime")
+    return int(TRANSIENT_FACTOR[name] * n_elements * 4) + 4096
+
 
 def type_name(ggml_type: int) -> str:
     return GGML_TYPES.get(ggml_type, (f"type{ggml_type}", 0, 0))[0]

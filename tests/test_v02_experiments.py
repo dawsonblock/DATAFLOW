@@ -222,11 +222,15 @@ def test_all_eight_architectures_run_the_same_workload(outcomes):
 
 
 def test_each_architecture_computes_where_its_definition_says(outcomes):
-    def devices(key, kind=None):
+    def devices(key, kind=None, *, embed=False):
         out = outcomes[key]
         names = {d.device_id: d.name for d in out.setup.system.topology.devices.values()}
-        return {names[d] for r in out.result.op_log if kind in (None, r.kind) for d in r.devices}
+        # the embedding gather is outside the layers: it runs where the table is stored
+        return {names[d] for r in out.result.op_log if kind in (None, r.kind)
+                and r.name.endswith(".embed") == embed for d in r.devices}  # fmt: skip
 
+    for key in ARCHITECTURES:
+        assert devices(key, embed=True) == {"host"}, key  # one row read on the host, never the table moved
     assert devices("A") <= {"host", "gpu"}
     assert devices("B") == {"mod0", "mod1"} and devices("C") == {"mod0", "mod1"}  # no GPU at all
     assert devices("D", "expert") == {"mod0", "mod1"} and devices("D", "trunk") == {"gpu"}
@@ -238,7 +242,7 @@ def test_each_architecture_computes_where_its_definition_says(outcomes):
     names = {d.device_id: d.name for d in outcomes["C"].setup.system.topology.devices.values()}
     by_layer: dict[int, set[str]] = {}
     for r in outcomes["C"].result.op_log:
-        if r.step == 2 and r.kind in ("trunk", "expert"):
+        if r.step == 2 and r.kind in ("trunk", "expert") and not r.name.endswith(".embed"):
             layer = int(r.name.split(".")[1][1:])  # "s2.l3.e7" -> 3
             by_layer.setdefault(layer, set()).update(names[d] for d in r.devices)
     assert [by_layer[layer] for layer in range(4)] == [{"mod0"}, {"mod0"}, {"mod1"}, {"mod1"}]

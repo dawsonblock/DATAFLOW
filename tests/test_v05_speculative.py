@@ -42,14 +42,14 @@ def test_greedy_speculative_output_equals_the_targets_greedy_output(models, k):
     with target.session(64) as s:
         r = speculative_generate(s, drafter, PROMPT, 24, k=k)
     assert r.tokens == expected
-    assert sum(x.emitted for x in r.rounds) >= len(r.tokens)
+    assert sum(x.returned for x in r.rounds) == len(r.tokens)
     assert all(x.proposed <= k and x.accepted <= x.proposed for x in r.rounds)
     # a drafter identical to the target is always right: k + 1 tokens per target call
     same = ModelDrafter(Engine(models["target"]), 64)
     with target.session(64) as s:
         r = speculative_generate(s, same, PROMPT, 24, k=k)
     assert r.tokens == expected and r.acceptance == 1.0
-    assert r.rounds[0].emitted == k + 1
+    assert r.rounds[0].returned == k + 1
 
 
 def test_prompt_lookup_drafts_from_the_context_and_stays_exact(models):
@@ -140,7 +140,7 @@ def test_adaptive_speculation_stays_exact(models):
         r = speculative_generate(s, ModelDrafter(draft, 64), PROMPT, 30, controller=controller)
     assert r.tokens == expected and controller.rounds == len(r.rounds)
     summary = r.summary()
-    assert summary["tokens"] == 30 and summary["target_calls"] == len(r.rounds)
+    assert summary["returned_tokens"] == 30 and summary["target_calls"] == len(r.rounds)
 
 
 def test_verifying_tokens_together_reads_each_expert_once(models):
@@ -155,7 +155,7 @@ def test_verifying_tokens_together_reads_each_expert_once(models):
     assert r.tokens == expected and r.acceptance == 1.0
     spec_requests = sum(x.expert_requests for x in r.rounds)
     assert spec_requests < seq_requests  # same tokens, fewer expert reads
-    assert r.summary()["expert_bytes_per_token"] > 0
+    assert r.summary()["expert_logical_bytes_per_token"] > 0
 
 
 def test_a_shared_prefix_is_computed_once(models):
