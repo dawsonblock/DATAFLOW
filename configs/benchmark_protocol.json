@@ -46,7 +46,7 @@
    "method": "speculative",
    "drafter": "model",
    "k": 2,
-   "_selection": "selected by the bounded tuning on the development prompts (evidence/studies/tuning-qwen3-1.7b: k=2 1.078x [0.99-1.17], adaptive 0.98x, prompt lookup 0.93x, k=4 0.86x; Qwen3-1.7B target, Qwen3-0.6B draft, PyTorch backend, this development container). Re-tune on the target machine before freezing there."
+   "_selection": "selected by the bounded tuning on the development prompts (evidence/studies/tuning-qwen3-1.7b: k=2 1.128x [1.03-1.24], adaptive 1.04x [0.99-1.10], prompt lookup 0.90x [0.80-1.00], k=4 0.83x [0.74-0.94]; Qwen3-1.7B target, Qwen3-0.6B draft, PyTorch backend, this development container; a first run with an earlier version of the tool ranked them the same, evidence/studies/superseded/). The best of four candidates on six prompts overstates its own speed-up; only the held-out decision study judges it. Re-tune on the target machine before freezing there."
   },
   "C": {
    "engine": "native",
