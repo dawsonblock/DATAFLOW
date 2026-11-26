@@ -113,6 +113,34 @@
   ],
   "shapes_match": true
  },
+ "identity": {
+  "backend": "torch-cpu",
+  "machine": "Linux x86_64 Intel(R) Xeon(R) Processor @ 2.10GHz (4 logical CPUs)",
+  "models": {
+   "model": {
+    "name": "Qwen3-0.6B-Q8_0.gguf",
+    "sha256": "9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031",
+    "size": 639446688
+   }
+  },
+  "parameters": {
+   "generated": 16,
+   "perplexity_tokens": 61,
+   "prompt_tokens": 5
+  },
+  "runtime": "786cb74409d195369ecbed7fc0ceac00a4ad25d9a9ff4c3003a064baffd7d2fb",
+  "software": {
+   "basp": "0.6.0",
+   "numpy": "2.5.3",
+   "platform": "Linux-6.18.44-fc-v880-x86_64-with-glibc2.39",
+   "python": "3.13.18",
+   "torch": "2.15.0+cpu"
+  },
+  "tool": {
+   "name": "basp.verification.parity_report",
+   "sha256": "0d4496327524d6fa7acb1a2046f1a0bad3528f4b7c2b745070a7ba6172863bf7"
+  }
+ },
  "model": "qwen3-0.6b",
  "numerical_error": 1.7545194048887764e-06,
  "perplexity": {
@@ -149,7 +177,7 @@
     "benchmark": "e37e10080d3e3f5e3497054f824075df56be8a058f2beb4317336a006ed6bae3",
     "machine": "Linux x86_64 Intel(R) Xeon(R) Processor @ 2.10GHz (4 logical CPUs)",
     "model": "qwen3-0.6b",
-    "runtime": "fc529ae10f292102aba99b85f8c1b66f9e65a11e6fb47063357904fb910979b2",
+    "runtime": "786cb74409d195369ecbed7fc0ceac00a4ad25d9a9ff4c3003a064baffd7d2fb",
     "weights": "9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031"
    },
    "candidate": "runtime:torch-cpu",
@@ -157,7 +185,7 @@
    "metric": "numerical_error",
    "note": "max relative L2 of logits, prompt and decode",
    "raw": {},
-   "receipt_id": "ec395af87875b9ee",
+   "receipt_id": "5808f89a068f70a9",
    "regime": "qwen3-0.6b, float32 CPU execution, parity with the transformers reference",
    "repetitions": 1,
    "value": 1.7545194048887764e-06
@@ -168,7 +196,7 @@
     "benchmark": "e37e10080d3e3f5e3497054f824075df56be8a058f2beb4317336a006ed6bae3",
     "machine": "Linux x86_64 Intel(R) Xeon(R) Processor @ 2.10GHz (4 logical CPUs)",
     "model": "qwen3-0.6b",
-    "runtime": "fc529ae10f292102aba99b85f8c1b66f9e65a11e6fb47063357904fb910979b2",
+    "runtime": "786cb74409d195369ecbed7fc0ceac00a4ad25d9a9ff4c3003a064baffd7d2fb",
     "weights": "9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031"
    },
    "candidate": "runtime:torch-cpu",
@@ -176,27 +204,32 @@
    "metric": "model_quality",
    "note": "perplexity relative to the reference on the same weights",
    "raw": {},
-   "receipt_id": "5d2cf148614a10f6",
+   "receipt_id": "a9c8fcadb9b052ee",
    "regime": "qwen3-0.6b, float32 CPU execution, parity with the transformers reference",
    "repetitions": 1,
    "value": 1.0000000028048017
   }
  ],
  "routing": null,
- "runtime_fingerprint": "fc529ae10f292102aba99b85f8c1b66f9e65a11e6fb47063357904fb910979b2",
- "seconds": 39.62774104999971,
+ "runtime_fingerprint": "786cb74409d195369ecbed7fc0ceac00a4ad25d9a9ff4c3003a064baffd7d2fb",
+ "seconds": 19.63482332400008,
  "shapes_match": true,
  "telemetry": {
   "decode": {
-   "seconds": 1.251639759997488,
+   "seconds": 1.0605252289997225,
    "tokens": 15,
-   "tokens_per_s": 11.984278927053344
+   "tokens_per_s": 14.14393508973649
   },
   "experts": {
    "cache_hits": 0,
+   "cache_misses": 0,
+   "decoded_float32_bytes": 0,
+   "decoded_stored_bytes": 0,
+   "failed_acquisitions": 0,
    "loads": 0,
-   "requests": 0,
-   "stored_bytes": 0,
+   "logical_requests": 0,
+   "logical_stored_bytes": 0,
+   "peak_load_workspace_bytes": 0,
    "token_expert_pairs": 0
   },
   "forward": {
@@ -208,55 +241,55 @@
     "backend": "torch-cpu",
     "count": 1008,
     "op": "add",
-    "seconds": 0.023090737013262697
+    "seconds": 0.016455083998607734
    },
    {
     "backend": "torch-cpu",
     "count": 504,
     "op": "attention",
-    "seconds": 0.13019661401176563
+    "seconds": 0.08941388699986419
    },
    {
     "backend": "torch-cpu",
     "count": 18,
     "op": "embedding",
-    "seconds": 0.0033015310027622036
+    "seconds": 0.0009966489992621064
    },
    {
     "backend": "torch-cpu",
     "count": 1008,
     "op": "head_rms_norm",
-    "seconds": 0.08210135098852334
+    "seconds": 0.04170634098954906
    },
    {
     "backend": "torch-cpu",
     "count": 2034,
     "op": "matmul",
-    "seconds": 1.6247785409714197
+    "seconds": 0.7573144249968209
    },
    {
     "backend": "torch-cpu",
     "count": 1026,
     "op": "rms_norm",
-    "seconds": 0.08553050899990922
+    "seconds": 0.05943250700056524
    },
    {
     "backend": "torch-cpu",
     "count": 1008,
     "op": "rope",
-    "seconds": 0.10955373600609164
+    "seconds": 0.08334088900073766
    },
    {
     "backend": "torch-cpu",
     "count": 504,
     "op": "swiglu",
-    "seconds": 1.3350957840020783
+    "seconds": 0.6067122239937817
    }
   ],
   "prefill": {
-   "seconds": 2.218677308000224,
+   "seconds": 0.6536496460003036,
    "tokens": 71,
-   "tokens_per_s": 32.00104843727587
+   "tokens_per_s": 108.62088036679977
   }
  },
  "thresholds": {

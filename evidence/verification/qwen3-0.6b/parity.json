@@ -113,6 +113,34 @@
   ],
   "shapes_match": true
  },
+ "identity": {
+  "backend": "numpy-cpu",
+  "machine": "Linux x86_64 Intel(R) Xeon(R) Processor @ 2.10GHz (4 logical CPUs)",
+  "models": {
+   "model": {
+    "name": "Qwen3-0.6B-Q8_0.gguf",
+    "sha256": "9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031",
+    "size": 639446688
+   }
+  },
+  "parameters": {
+   "generated": 16,
+   "perplexity_tokens": 61,
+   "prompt_tokens": 5
+  },
+  "runtime": "786cb74409d195369ecbed7fc0ceac00a4ad25d9a9ff4c3003a064baffd7d2fb",
+  "software": {
+   "basp": "0.6.0",
+   "numpy": "2.5.3",
+   "platform": "Linux-6.18.44-fc-v880-x86_64-with-glibc2.39",
+   "python": "3.13.18",
+   "torch": "2.15.0+cpu"
+  },
+  "tool": {
+   "name": "basp.verification.parity_report",
+   "sha256": "0d4496327524d6fa7acb1a2046f1a0bad3528f4b7c2b745070a7ba6172863bf7"
+  }
+ },
  "model": "qwen3-0.6b",
  "numerical_error": 2.7508459357729636e-06,
  "perplexity": {
@@ -141,20 +169,6 @@
  },
  "prompt_text": "The capital of France is",
  "prompt_tokens": 5,
- "quantisation": {
-  "logits": {
-   "argmax_agreement": 0.9836065573770492,
-   "finite": true,
-   "max_abs": 4.558150291442871,
-   "rel_l2_max": 0.34491212133716065,
-   "rel_l2_mean": 0.03363452471938464,
-   "rows": 61,
-   "top_overlap": 0.9508196721311475
-  },
-  "original_perplexity": 16.039493954472036,
-  "quantised_runtime_perplexity": 15.301789855863356,
-  "relative": 0.9540070216240832
- },
  "reasons": [],
  "receipts": [
   {
@@ -163,7 +177,7 @@
     "benchmark": "e37e10080d3e3f5e3497054f824075df56be8a058f2beb4317336a006ed6bae3",
     "machine": "Linux x86_64 Intel(R) Xeon(R) Processor @ 2.10GHz (4 logical CPUs)",
     "model": "qwen3-0.6b",
-    "runtime": "fc529ae10f292102aba99b85f8c1b66f9e65a11e6fb47063357904fb910979b2",
+    "runtime": "786cb74409d195369ecbed7fc0ceac00a4ad25d9a9ff4c3003a064baffd7d2fb",
     "weights": "9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031"
    },
    "candidate": "runtime:numpy-cpu",
@@ -171,7 +185,7 @@
    "metric": "numerical_error",
    "note": "max relative L2 of logits, prompt and decode",
    "raw": {},
-   "receipt_id": "c2d64302ac6e851f",
+   "receipt_id": "6f6dfe10b3f684f1",
    "regime": "qwen3-0.6b, float32 CPU execution, parity with the transformers reference",
    "repetitions": 1,
    "value": 2.7508459357729636e-06
@@ -182,7 +196,7 @@
     "benchmark": "e37e10080d3e3f5e3497054f824075df56be8a058f2beb4317336a006ed6bae3",
     "machine": "Linux x86_64 Intel(R) Xeon(R) Processor @ 2.10GHz (4 logical CPUs)",
     "model": "qwen3-0.6b",
-    "runtime": "fc529ae10f292102aba99b85f8c1b66f9e65a11e6fb47063357904fb910979b2",
+    "runtime": "786cb74409d195369ecbed7fc0ceac00a4ad25d9a9ff4c3003a064baffd7d2fb",
     "weights": "9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031"
    },
    "candidate": "runtime:numpy-cpu",
@@ -190,27 +204,32 @@
    "metric": "model_quality",
    "note": "perplexity relative to the reference on the same weights",
    "raw": {},
-   "receipt_id": "362f6da62ecc0e06",
+   "receipt_id": "7aeffaec87fe7bb6",
    "regime": "qwen3-0.6b, float32 CPU execution, parity with the transformers reference",
    "repetitions": 1,
    "value": 1.0000010296805477
   }
  ],
  "routing": null,
- "runtime_fingerprint": "fc529ae10f292102aba99b85f8c1b66f9e65a11e6fb47063357904fb910979b2",
- "seconds": 43.66832121100015,
+ "runtime_fingerprint": "786cb74409d195369ecbed7fc0ceac00a4ad25d9a9ff4c3003a064baffd7d2fb",
+ "seconds": 41.40608513899997,
  "shapes_match": true,
  "telemetry": {
   "decode": {
-   "seconds": 1.5977749590001622,
+   "seconds": 0.8834685279985024,
    "tokens": 15,
-   "tokens_per_s": 9.388055505254966
+   "tokens_per_s": 16.978533501337612
   },
   "experts": {
    "cache_hits": 0,
+   "cache_misses": 0,
+   "decoded_float32_bytes": 0,
+   "decoded_stored_bytes": 0,
+   "failed_acquisitions": 0,
    "loads": 0,
-   "requests": 0,
-   "stored_bytes": 0,
+   "logical_requests": 0,
+   "logical_stored_bytes": 0,
+   "peak_load_workspace_bytes": 0,
    "token_expert_pairs": 0
   },
   "forward": {
@@ -222,55 +241,55 @@
     "backend": "numpy-cpu",
     "count": 1008,
     "op": "add",
-    "seconds": 0.01015083100173797
+    "seconds": 0.006984592002936552
    },
    {
     "backend": "numpy-cpu",
     "count": 504,
     "op": "attention",
-    "seconds": 0.1510903920052442
+    "seconds": 0.1349567960010063
    },
    {
     "backend": "numpy-cpu",
     "count": 18,
     "op": "embedding",
-    "seconds": 0.001308451000113564
+    "seconds": 0.0004557730007945793
    },
    {
     "backend": "numpy-cpu",
     "count": 1008,
     "op": "head_rms_norm",
-    "seconds": 0.053281242005141394
+    "seconds": 0.043142995000380324
    },
    {
     "backend": "numpy-cpu",
     "count": 2034,
     "op": "matmul",
-    "seconds": 1.5387365909919026
+    "seconds": 0.6967631940078718
    },
    {
     "backend": "numpy-cpu",
     "count": 1026,
     "op": "rms_norm",
-    "seconds": 0.05996218298878375
+    "seconds": 0.045053435993395397
    },
    {
     "backend": "numpy-cpu",
     "count": 1008,
     "op": "rope",
-    "seconds": 0.074475234023339
+    "seconds": 0.053650985005333496
    },
    {
     "backend": "numpy-cpu",
     "count": 504,
     "op": "swiglu",
-    "seconds": 1.4308601979964806
+    "seconds": 0.6131230139981199
    }
   ],
   "prefill": {
-   "seconds": 1.8088739220002026,
+   "seconds": 0.760731830000168,
    "tokens": 71,
-   "tokens_per_s": 39.25093901596534
+   "tokens_per_s": 93.33118084461422
   }
  },
  "thresholds": {
