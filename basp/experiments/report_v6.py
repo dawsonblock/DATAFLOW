@@ -376,6 +376,22 @@ def _speculative_section(spec_ev: dict[str, Any]) -> str:
     return "\n".join(parts)
 
 
+def _verdict_text(study: dict[str, Any]) -> str:
+    """The rule's verdict, and whether the study could decide anything at all."""
+    d = study["decision"]
+    text = d["verdict"].replace("_", " ")
+    if d.get("supports_decision"):
+        return f"**{text}: decision**"
+    why = []
+    if study.get("reduced"):
+        why.append("reduced pilot")
+    if d.get("exploratory"):
+        why.append("exploratory")
+    if not study.get("protocol", {}).get("frozen"):
+        why.append("protocol not frozen")
+    return f"{text} ({', '.join(why) or 'no decision'}: decides nothing)"
+
+
 def _studies_section(studies: list[dict[str, Any]]) -> str:
     """Markdown for the request-latency studies, computed from their summaries."""
     head = ["### Request-latency studies under the protocol (v0.6)", "",
@@ -388,7 +404,7 @@ def _studies_section(studies: list[dict[str, Any]]) -> str:
         return "\n".join([*head, "", "No study has been run (`python -m benchmarks.run_study`)."])
     rows, work = [], []
     for st in studies:
-        a, d = st["analysis"], st["decision"]
+        a = st["analysis"]
         ident = (st.get("identity") or {}).get("models") or {}
         model = (ident.get("target") or {}).get("name", "native engine")
         arms = st["arms"]
@@ -398,7 +414,7 @@ def _studies_section(studies: list[dict[str, Any]]) -> str:
         interval = "-" if a["speedup"] is None else f"{a['speedup']:.3f}x ({a['ci_low']:.2f}-{a['ci_high']:.2f})"
         rows.append([f"`{st['path']}`", model, f"{a['baseline']} vs {a['candidate']}: {label}",
                      f"{a['prompts_with_valid_pairs']}/{a['prompts_planned']}", a["valid_pairs"], len(a["failures"]),
-                     interval, d["verdict"].replace("_", " ") + validity.note(st["validity"])])  # fmt: skip
+                     interval, _verdict_text(st) + validity.note(st["validity"])])  # fmt: skip
         for arm, e in sorted(st["per_arm"].items()):
             per = e.get("per_returned_token") or {}
             if per.get("expert_logical_requests"):

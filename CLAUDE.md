@@ -112,7 +112,7 @@ is a failure, not a skip). Configurations ship inside the package (`basp/_config
 
 ## Development
 
-- `python -m pytest -q` (about 4 minutes) and `ruff check .` must pass before every commit.
+- `python -m pytest -q` (about 9 minutes) and `ruff check .` must pass before every commit.
 - Python 3.10+; NumPy is the only runtime dependency.
 - Generated reports are deterministic: never edit `reports/*/report.md` or `results.json` by hand;
   regenerate them. Report commentary is computed from the results.

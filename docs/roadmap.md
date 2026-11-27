@@ -51,6 +51,60 @@ hardware decision, because runtime measurements are what make that decision cred
 Results on existing GPUs are never presented as measurements of hypothetical modules: before a
 prototype exists, module claims are at most E2. Every gate criterion states its required level.
 
+## Release v0.6 — Repair and validation before expansion
+
+No new capability. An audit found fourteen defects. Each is fixed with a test of the behaviour,
+and a protocol now decides any speed claim before it is measured.
+
+| Finding | Repair | Where | Test |
+|---|---|---|---|
+| R4, R5 | Owner-safe eviction (reclamation hooks on memory-domain blocks); transactional expert acquisition | `basp/memory/domains.py`, `basp/runtime/weights.py` | `tests/test_v06_runtime_repairs.py` |
+| R3 | Hard ceiling on decoded experts, scratch included; bounded expert groups, same accumulation order | `weights.py`, `model.py`, `backends/*/kernels` | same |
+| R1 | Linear-memory sampling acceptance | `basp/runtime/speculative.py` | same |
+| R2 | One documented session state after generation; continuation; stop and length handling | `generation.py`, `speculative.py`, `session.py` | same |
+| R6 | Prefix cache validates before it admits and closes on failure | `prefix_cache.py` | same |
+| S1, S2 | Shared experts, embedding (run where the table is), final norm, tied embeddings once; reconciliation with an independent count | `basp/compiler/lower.py`, `basp/verification/reconcile.py` | `tests/test_v06_simulator_repairs.py` |
+| S3 | Routing provenance per experiment; an unusable recording is an error | `basp/experiments/variants.py` | same |
+| S4 | Calibration counts only validation observations covering the candidate's regime | `basp/calibration/coverage.py`, `gate.py` | `tests/test_v06_evidence_repairs.py` |
+| E1 | Receipts selected by content hash; the worst value decides | `basp/evidence/qualification.py` | same |
+| E2 | Logical expert requests apart from misses, decoded bytes and storage reads | `basp/runtime/telemetry.py` | runtime tests |
+| E3 | Complete identities; one validity rule and one rendering | `basp/evidence/validity.py` | evidence and report tests |
+| P1 | Installable package with configurations; release check with mandatory reference verification | `setup.py`, `benchmarks/release_check.py`, CI `package` job | CI |
+
+**Measurement protocol** (`configs/benchmark_protocol.json`, `basp/bench/`, `benchmarks/run_study.py`).
+Five arms. A and B are ordinary and speculative decoding in this runtime (the internal comparison,
+which needs at least 1.10x). C is the stock native engine and D the tuned native engine. E is D
+plus one BASP-derived intervention. The competitive comparison is D vs E and needs at least 1.20x.
+The outcome is end-to-end request latency:
+
+- paired AB/BA trials at concurrency 1;
+- the equal-weight geometric mean of per-prompt ratios, with a prompt-level bootstrap stratified
+  by category;
+- an interval that includes 1 is inconclusive;
+- no category's median latency may worsen by more than 5%.
+
+Tuning uses only the six development prompts and the listed candidates. A decision study needs
+the comparison frozen (fingerprinted) and the 24 held-out prompts. The protocol is **proposed,
+not frozen**. No decision study and no native arm has run.
+
+Exploratory results on this development container. These are not decisions:
+
+| Study | What | Result |
+|---|---|---|
+| Tuning, Qwen3-1.7B / 0.6B draft, PyTorch CPU | 4 candidates x 6 prompts x 2 pairs x 64 tokens | k=2 1.128x (1.03-1.24); adaptive 1.04x; prompt lookup 0.90x; k=4 0.83x. Arm B = k=2. |
+| Timing pilot, Qwen3-30B-A3B / 0.6B draft | 2 prompts x 1 pair x 16 tokens, 2 GiB expert ceiling, embedding rows on demand | 1.19x on two coding prompts. The ceiling held (2.13 of 2.15 GB). 558 vs 453 logical expert requests per returned token, all misses. About 1 GB per token read from storage. Projected feasibility time 1.6 h. |
+| Feasibility, Qwen3-30B-A3B / 0.6B draft, arm B = k=2 | 6 development prompts x 2 pairs (AB/BA balanced) x 64 tokens, same settings | 1.126x (1.096-1.157). By category: coding 1.23x, technical 1.13x, prose 1.03x. No failed request. 423 vs 363 logical expert requests per returned token (69% acceptance). Storage reads per token *rose*, 0.53 to 0.65 GB: the page cache served the speculative arm's misses less often (cause not established). 0.33 vs 0.37 tokens/s in this runtime. |
+
+The feasibility result says a decision study is worth running. It decides nothing. The prompts are
+the development prompts, which also chose the candidate on the 1.7B model. It has six prompts and
+two pairs, and ran on one shared 4-core container. Projected time for the decision study in this
+runtime: about 15 hours (24 held-out prompts x 3 pairs x 128 tokens).
+
+Next (v0.7): the native baseline on the i9 + 3080 Ti. Pin llama.cpp (revision, binary hash,
+command) and tune it within the bounded budget (arm D). Then profile the share of request time
+that an intervention could address. Build arm E only if `1/(1 - f r)` can reach 1.20x. Freeze the
+protocol, then run the decision study once.
+
 ## Release v0.5 — Predictive Speculative Execution (BASP-X, phase 1)
 
 The aim changes from executing the same work on faster hardware to **doing less work per token**:

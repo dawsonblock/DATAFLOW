@@ -5,27 +5,31 @@ topology-aware, asynchronous dataflow layer that decides, per operation, whether
 a processor or to execute where the data already resides — and an engineering system for finding
 out, from evidence, **which architecture is best**, including "a conventional CPU/GPU system".
 
-This repository is **v0.5, Predictive Speculative Execution** (BASP-X, phase 1). Its aim is to
-reduce the computation and memory traffic each generated token needs, rather than run the same work
-on faster hardware. On top of v0.4 (evidence receipts, physical memory domains, a verified runtime
-for real GGUF models) it adds, all measured on real models:
+This repository is **v0.6, a repair-and-validation release**. Before anything is expanded, it fixes
+the fourteen defects an audit found in v0.5:
 
-* **speculative decoding** in the runtime: a small draft model (or a lookup of the context) proposes
-  several tokens and the target verifies them in one pass. Greedy output is exactly the target's;
-  sampled output follows the target's distribution. An adaptive controller picks the draft length
-  from measured acceptance and costs, and switches speculation off when it does not pay;
-* **grouped expert execution**: in a mixture-of-experts layer, every expert any verified token
-  selects is read once for all of them, with the stored bytes counted;
-* **real Qwen3-30B-A3B execution** in about 10 GB (experts and embeddings read on demand), a recorded
-  routing trace of it, and expert-prediction accuracy on that real routing;
-* a **shared-prefix KV cache** and an optional **PyTorch CPU backend** under the same parity checks.
+* expert memory that could outlive its owner or exceed its budget;
+* sampling memory quadratic in the vocabulary;
+* inconsistent session state after generation;
+* simulator lowering that left out the embedding, the final norm and shared experts;
+* evidence that could be selected favourably, was scoped too broadly, or lacked identity;
+* a package that worked only from the checkout.
+
+It also adds a pre-declared protocol for any speed claim: paired, counterbalanced request-latency
+trials with prompts as the independent units, frozen before the decision study runs.
+
+v0.5 (speculative decoding, grouped expert reads, real Qwen3-30B-A3B execution in about 10 GB, a
+recorded routing trace, a shared-prefix KV cache, a PyTorch CPU backend) and v0.4 (evidence
+receipts, memory domains, a runtime verified against transformers) remain. The v0.6 results are
+exploratory studies on a 4-core development container. The decision study and the native-engine
+comparison (llama.cpp) are for the target machine.
 
 It is a Python research system that needs only NumPy (plus PyTorch and transformers for the
 reference and the optional backend).
 
-> **Status of the numbers.** Speculative-execution results are measurements (E3) on one 4-core CPU
-> with this runtime: speed-ups are against the runtime's own plain decoding, **not** against
-> llama.cpp or KTransformers. No calibration measurement of the target machines exists yet, so every
+> **Status of the numbers.** Runtime results are measurements (E3) on one 4-core CPU with this
+> runtime, from exploratory studies that cannot support a decision. Speed-ups are against the
+> runtime's own plain decoding, **not** against llama.cpp or KTransformers. No calibration measurement of the target machines exists yet, so every
 > architecture figure is an uncalibrated simulation (E1), and everything about compute-memory modules
 > is an estimate with a range. Nothing here is GPU inference: the CUDA, Metal and GGML backends are
 > declared and report themselves unavailable. See [docs/limitations.md](docs/limitations.md).
@@ -63,45 +67,63 @@ on the same machine is the next requirement (v0.6).
 **Hardware development: NO-GO**, and real routing makes the case for module hardware weaker still.
 No FPGA or RTL work has been started, by decision ([docs/roadmap.md](docs/roadmap.md)).
 
-Full report: [reports/v0.5/report.md](reports/v0.5/report.md) (machine-readable:
-[results.json](reports/v0.5/results.json), including every gate receipt; [dse.json](reports/v0.5/dse.json);
-inputs and environment: [provenance.json](reports/v0.5/provenance.json)). First workload: Qwen3-30B-A3B
+Full report: [reports/v0.6/report.md](reports/v0.6/report.md) (machine-readable:
+[results.json](reports/v0.6/results.json), including every gate receipt; [dse.json](reports/v0.6/dse.json);
+inputs and environment: [provenance.json](reports/v0.6/provenance.json)). First workload: Qwen3-30B-A3B
 shapes at 4.5 bits per weight (16.0 GiB), single-user decoding, 12 GiB GPU, with the model's **recorded
-routing** (v0.5; earlier reports used synthetic routing).
+routing**. v0.6 adds the embedding lookup, the final norm and shared experts to the simulator. For
+this model the figures move by about 1%.
 
 | Architecture | tokens/s (range over estimates) | vs A, nominal / pessimistic | per dollar vs A, nominal / pessimistic |
 |---|---|---|---|
-| A Centralized (conventional CPU/GPU) | 230 | 1.00x | 1.00x |
-| B Distributed | 47 (38–59) | 0.20x / 0.16x | 0.04x / 0.01x |
+| A Centralized (conventional CPU/GPU) | 227 | 1.00x | 1.00x |
+| B Distributed | 47 (38–59) | 0.21x / 0.17x | 0.04x / 0.01x |
 | C Pipeline | 28 (23–35) | 0.12x / 0.10x | 0.03x / 0.01x |
-| D Expert-local | 109 (92–129) | 0.48x / 0.40x | 0.09x / 0.02x |
-| E Tensor-parallel | 132 (111–153) | 0.57x / 0.48x | 0.11x / 0.03x |
-| F Adaptive hybrid | 232 (226–235) | 1.01x / 0.98x | 0.19x / 0.06x |
-| G Spatial dataflow | 113 (96–133) | 0.49x / 0.42x | 0.09x / 0.03x |
-| H Hierarchical | 235 (231–257) | 1.02x / 1.01x | 0.21x / 0.06x |
+| D Expert-local | 109 (92–129) | 0.48x / 0.41x | 0.09x / 0.02x |
+| E Tensor-parallel | 131 (111–153) | 0.58x / 0.49x | 0.11x / 0.03x |
+| F Adaptive hybrid | 231 (225–235) | 1.02x / 0.99x | 0.20x / 0.06x |
+| G Spatial dataflow | 113 (96–133) | 0.50x / 0.42x | 0.10x / 0.03x |
+| H Hierarchical | 234 (230–256) | 1.03x / 1.01x | 0.22x / 0.06x |
 
 What the simulation says, under its assumptions:
 
 * **Real routing helps the conventional system most.** Qwen3-30B-A3B's real expert selections are
-  more concentrated than the synthetic ones, so the 12 GiB GPU's expert cache hits more often:
-  architecture A rises from 171 to 230 tokens/s, and the best module design's advantage shrinks
-  from 1.23x to 1.02x, at about five times the price (0.21x the throughput per dollar).
+  more concentrated than synthetic ones, so the 12 GiB GPU's expert cache hits more often.
+  Architecture A reaches 227 tokens/s (171 with synthetic routing in v0.4). The best module
+  design's advantage is 1.03x (1.23x with synthetic routing), at about five times the price:
+  0.22x the throughput per dollar.
 * **A bigger GPU beats every module design for this model.** The 16 GiB model fits a 32 GiB
-  (RTX 5090-class) GPU: 438 tokens/s for an estimated $3,600, faster than any of the 1,980 systems
-  explored. The Pareto front (speed, tokens per joule, price) is entirely conventional.
+  (RTX 5090-class) GPU: 436 tokens/s for an estimated $3,600. None of the 1,980 systems explored is
+  faster; designs adding modules to the same GPU only match it, at higher prices. The Pareto front
+  (speed, tokens per joule, price) is entirely conventional.
 * **Modules help only when the model is far larger than the GPU, and never per dollar.** With a
-  12 GiB GPU: 3.2x for a 70B dense model and 3.0x for DeepSeek-V3 shapes (synthetic routing for
-  those). The gate's most favourable regime (70B, pessimistic estimates) gives 2.7x throughput and
-  1.3x energy efficiency, but only 0.17x per dollar.
-* **Each candidate is judged on its own scaling.** From one to four modules H scales at 26% (its GPU
-  does most of the work), E on the 70B model at 93%.
-* **Expert caching policy matters on a small GPU** (recorded routing, simulated costs, E1): with a
+  12 GiB GPU they reach 3.2x for a 70B dense model and 2.9x for DeepSeek-V3 shapes (synthetic
+  routing for those). The gate's most favourable regime (70B, pessimistic estimates) gives 2.7x
+  throughput and 1.3x energy efficiency, but only 0.17x per dollar.
+* **Each candidate is judged on its own scaling.** From one to four modules, H scales at 26% (its
+  GPU does most of the work) and E on the 70B model at 93%.
+* **Expert caching policy matters on a small GPU** (recorded routing, simulated costs, E1). With a
   2 GiB expert cache, valuing experts by expected reuse and running rare ones on the CPU is 1.84x
-  faster than LRU; at 4 GiB the predictive policy is 1.21x faster; at 8 GiB LRU and LFU are best.
-* **Real weights run and match the reference.** Qwen3-0.6B (Q8_0 GGUF) agrees with transformers to
-  2.8e-6 relative error (NumPy backend) and 1.8e-6 (PyTorch backend), with 16 identical greedy tokens
-  and perplexity 1.000001x; MoE routing matches exactly on small random-weight models. These receipts
-  concern Qwen3-0.6B and do not qualify the 30B regime's gate criteria.
+  faster than LRU. At 4 GiB the predictive policy is 1.21x faster. At 8 GiB, LRU and LFU are best.
+* **Real weights run and match the reference** (re-measured on the v0.6 runtime). Qwen3-0.6B (Q8_0
+  GGUF) agrees with transformers to 2.8e-6 relative error (NumPy backend) and 1.8e-6 (PyTorch
+  backend), with 16 identical greedy tokens and perplexity 1.000001x. MoE routing matches exactly on
+  small random-weight models. These receipts concern Qwen3-0.6B and do not qualify the 30B regime's
+  gate criteria.
+
+Exploratory request-latency studies under the v0.6 protocol, all on a 4-core development container.
+Each is paired AB/BA, has the prompt as its unit, and decides nothing:
+
+* **Tuning on Qwen3-1.7B** (0.6B draft, PyTorch CPU backend, six development prompts) selects
+  drafting 2 tokens: 1.13x (1.03–1.24). Adaptive drafting gives 1.04x, prompt lookup 0.90x, and
+  drafting 4 tokens 0.83x.
+* **Qwen3-30B-A3B feasibility** (same settings, 2 GiB hard ceiling on decoded experts, which
+  held): 1.13x (1.10–1.16) over the six prompts. Coding 1.23x, technical 1.13x, prose 1.03x.
+  Speculation cut logical expert requests per returned token from 423 to 363. Storage reads per
+  token rose from 0.53 to 0.65 GB, and the cause is not established.
+* **None of this compares with llama.cpp.** The competitive comparison (tuned llama.cpp against
+  llama.cpp plus one BASP-derived change) and the frozen decision study on 24 held-out prompts are
+  for the target machine.
 
 ## What you need to run
 
@@ -135,12 +157,12 @@ against a fake llama-bench. Expect small fixes on first use.
 
 ```bash
 pip install -e ".[dev]"                          # or just: pip install numpy pytest
-python -m pytest -q                              # regression suite, about five minutes
+python -m pytest -q                              # regression suite, about nine minutes
 python -m benchmarks.dataflow_model              # closed-form comparison of specification section 6
 python -m benchmarks.explore --budget 60 --workers 4 --out /tmp/dse.json   # a small exploration
 python -m benchmarks.run_report --quick          # every experiment, short runs, a few minutes
 python -m benchmarks.explore --budget 2000 --workers 4 --trace evidence/traces/qwen3-30b-a3b.decode.json
-python -m benchmarks.run_report --trace evidence/traces/qwen3-30b-a3b.decode.json   # -> reports/v0.5/
+python -m benchmarks.run_report --trace evidence/traces/qwen3-30b-a3b.decode.json   # -> reports/v0.6/
 ```
 
 Both the exploration and the report are deterministic: on the same Python and NumPy versions
@@ -213,7 +235,30 @@ python -m benchmarks.verify_runtime --gguf Qwen3-0.6B-Q8_0.gguf --model qwen3-0.
 The runtime dequantises dense weights to float32 and experts on demand, so it is a reference
 implementation for correctness and for counting what a method saves, not a fast engine.
 
-## What v0.5 adds
+## What v0.6 adds
+
+A repair-and-validation release. It fixes fourteen audit findings, each with a test of the
+behaviour (details in [docs/roadmap.md](docs/roadmap.md)), and sets up a measurement protocol for
+any speed claim:
+
+| Item | Where |
+|---|---|
+| Owner-safe, transactional expert store with a hard memory ceiling (bounded expert groups, same summation order) | `basp/runtime/weights.py`, `basp/memory/domains.py` |
+| Linear-memory sampling acceptance; one documented session state after generation, with continuation | `basp/runtime/speculative.py`, `generation.py` |
+| Shared experts, embedding lookup and final norm in the simulator, reconciled with an independent count; routing provenance per experiment | `basp/compiler/lower.py`, `basp/verification/reconcile.py` |
+| Calibration evidence scoped to the regimes it covers; receipts chosen by content hash, worst value deciding; complete identities and one validity rule | `basp/calibration/coverage.py`, `basp/evidence/` |
+| Request-latency protocol: arms A-E, paired AB/BA trials, prompt-level bootstrap, freezing, Amdahl headroom | `configs/benchmark_protocol.json`, `basp/bench/`, `benchmarks/run_study.py` |
+| Installable package with its configurations; release check that runs the reference verification | `setup.py`, `benchmarks/release_check.py` |
+
+```bash
+python -m benchmarks.run_study tune --target <target.gguf> --draft <draft.gguf> --tokenizer <dir> --out evidence/studies/tuning
+python -m benchmarks.run_study freeze --comparison internal        # only on the machine that decides
+python -m benchmarks.run_study run --study decision --comparison internal ... --out evidence/studies/decision
+python -m benchmarks.run_study headroom --fraction 0.30 --reduction 0.50 --target 1.20
+python -m benchmarks.release_check --require-reference
+```
+
+## What v0.5 added
 
 | Item | Where | Evidence |
 |---|---|---|
@@ -252,14 +297,16 @@ basp/
   models/       GGUF headers, tensor data, dequantisation, writer for test models
   runtime/      the physical runtime: device manager, plans, dispatcher, sessions, Qwen3 model, generation,
                 speculative decoding, prefix cache
-  evidence/     evidence levels, identities, receipts, qualification, provenance
+  evidence/     evidence levels, identities, receipts, qualification, provenance, validity
+  bench/        request-latency protocol: schedule, arms, paired analysis, decisions
   experiments/  architectures, investigations, suites, exploration, calibration glue, gate, reports
 benchmarks/     command-line entry points (report, exploration, profiling, calibration, traces)
-configs/        hardware profiles, design estimates and gate thresholds (assumptions, labelled)
-reports/v0.5/   the generated report, its results (with receipts), provenance and the exploration data
-reports/v0.1/ to reports/v0.4/   earlier reports, kept as records (superseded)
-evidence/       verification/ (runtime parity), speculative/ (speculative execution), traces/ (recorded
-                routing); <machine>/ measurements (created by run_calibration)
+configs/        hardware profiles, design estimates, gate thresholds and the benchmark protocol (labelled)
+reports/v0.6/   the generated report, its results (with receipts), provenance and the exploration data
+reports/v0.1/ to reports/v0.5/   earlier reports, kept as records (superseded)
+evidence/       verification/ (runtime parity), studies/ (request-latency studies under the protocol),
+                speculative/ (v0.5 measurements), traces/ (recorded routing); <machine>/ measurements
+                (created by run_calibration)
 tests/          regression suite
 docs/           architecture, calibration, limitations, roadmap
 ```
@@ -275,12 +322,13 @@ declarations that refuse every call.
 | v0.1–v0.2 | Dataflow engine; architecture discovery | Done, simulated |
 | v0.3 | Repair and evidence infrastructure | Done |
 | v0.4 | Evidence receipts, memory domains, a verified runtime for real GGUF models | Done for the CPU |
-| v0.5 | Speculative execution and grouped expert reads, measured on real models | **Done on the CPU** (this release) |
+| v0.5 | Speculative execution and grouped expert reads, measured on real models | Done on the CPU |
+| v0.6 | Repairs of the audit findings; request-latency protocol; installable package | **Done** (this release); no decision study yet |
 | Calibration | Held-out validation on the calibration machines | **Ready to run**; nothing measured |
-| v0.6 | Native CPU/CUDA/Metal backends; llama.cpp and KTransformers measured on the same machine | Not started |
-| v0.7 | Adaptive expert placement on real hardware, measured against llama.cpp | Components in place |
-| v0.8 | Architecture I; distributed execution | Not started |
-| v0.9–v1.0 | Accelerator RTL, FPGA prototype | Blocked on the gate |
+| v0.7 | Tuned llama.cpp baseline (arm D) on the i9 + 3080 Ti; at most one bounded native intervention (arm E), only if its headroom allows 1.20x | Not started; needs the target machine |
+| v0.8 | Native CPU/CUDA/Metal backends; adaptive expert placement on real hardware | Only if v0.7's decision study meets its criterion |
+| v0.9 | Architecture I; distributed execution | Not started |
+| v0.10–v1.0 | Accelerator RTL, FPGA prototype | Blocked on the gate |
 
 ## License
 

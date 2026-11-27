@@ -11,9 +11,17 @@ runtime's numerical parity with transformers, on the machine that ran the verifi
 ## Repairs and the measurement protocol (new in v0.6)
 
 * **The protocol is proposed, not frozen, and no decision study has run.** Only exploratory
-  studies exist (tuning on the six development prompts; a feasibility study and timing pilot of the
-  30B model, if listed in report section 11). They cannot support any acceleration claim. Freezing
-  the protocol and running the decision study on the held-out prompts is for the target machine.
+  studies exist: the tuning on Qwen3-1.7B, and a timing pilot and a feasibility study of
+  Qwen3-30B-A3B, all on the six development prompts (report section 11). They cannot support any
+  acceleration claim. The same prompts chose the candidate (on the 1.7B model), and the chosen
+  candidate is the best of four on six prompts, so its estimate is optimistic. Freezing the protocol
+  and running the decision study on the 24 held-out prompts is for the target machine. In this
+  runtime the decision study would take about 15 hours.
+* **Storage traffic is not explained.** On the 30B model, speculation lowered expert requests and
+  decoded bytes per returned token but raised storage reads per token (0.53 to 0.65 GB). The OS
+  page cache, which cannot hold the 18.6 GB file in 15 GB of RAM, served the speculative arm's
+  misses less often. Why is not established, and on a machine with enough RAM the effect would
+  differ.
 * **No native-engine arm has ever run.** Arms C, D and E (stock llama.cpp, tuned llama.cpp, and
   BASP's change inside it) are implemented against an OpenAI-compatible `/v1/completions` server,
   tested only against a stand-in server. The competitive comparison (D vs E) has no data.

@@ -60,7 +60,8 @@ def test_studies_are_rendered_with_their_verdict_and_validity(tmp_path):
     current = next(line for line in text.splitlines() if "`studies/current`" in line)
     other = next(line for line in text.splitlines() if "`studies/unidentified`" in line)
     assert "1.250x" in current and "NOT APPLICABLE" not in current
-    assert "slower -- NOT APPLICABLE (no identity recorded" in other
+    assert "meets criterion (exploratory, protocol not frozen: decides nothing)" in current
+    assert "slower (exploratory, protocol not frozen: decides nothing) -- NOT APPLICABLE (no identity recorded" in other
     assert "A vs B: speculative, k=2" in current and "target.gguf" in current
     # work per returned token is shown per arm, logical requests apart from misses
     assert "| `studies/current` | B | 48 | 6 | 3 |" in text
