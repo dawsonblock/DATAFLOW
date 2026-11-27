@@ -1,0 +1,22 @@
+{
+  "_note": "Proposed acceptance thresholds for starting hardware development. Targets, not results.",
+  "calibration_median_max": 0.1,
+  "calibration_p95_max": 0.2,
+  "min_validation_measurements": 8,
+  "throughput_min": 2.0,
+  "energy_min": 2.0,
+  "cost_efficiency_min": 2.0,
+  "scaling_efficiency_min": 0.7,
+  "scheduler_overhead_max": 0.05,
+  "numeric_rel_l2_max": 0.002,
+  "plan_evaluation_cost_s": {
+    "optimistic": 5e-08,
+    "nominal": 2e-07,
+    "pessimistic": 1e-06
+  },
+  "decision_corner": "pessimistic",
+  "model_quality_relative_perplexity_max": 1.01,
+  "_model_quality_note": "Added in v0.4 to give the 'no material degradation' criterion a number: perplexity at most 1% above the reference runtime's on the same text. No existing threshold was changed.",
+  "min_validation_per_regime": 2,
+  "_coverage_note": "Added in v0.6: a comparison counts as validated (E2) only if at least this many successful validation observations cover each regime it relies on (model family, layer placement, context, measured quantity). It only tightens the gate; no existing threshold was changed."
+}

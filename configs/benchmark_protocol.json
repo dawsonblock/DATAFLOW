@@ -1,0 +1,341 @@
+{
+ "_note": "Proposed defaults for the BASP request-latency studies. PROPOSED, NOT FROZEN: finalise after the timing-only pilot and before any decision result is examined, then freeze (python -m benchmarks.run_study freeze). The held-out prompts must never inform a setting. The criteria are proposed software criteria: not achieved results, and not the hardware gate (hardware_gate.json), which is separate and unchanged.",
+ "name": "basp-request-latency",
+ "version": 1,
+ "status": "proposed",
+ "primary_outcome": "request_latency_s",
+ "regime": {
+  "concurrency": 1,
+  "model": "warm: models loaded before the study; one unmeasured warm-up request per arm",
+  "request_context": "fresh session per request; no prefix or prompt cache in any arm",
+  "expert_cache": "cleared",
+  "_expert_cache": "'cleared': the expert cache is emptied before every request (both arms start equal); the OS page cache is left as it is and its state is recorded, not assumed cold",
+  "sampling": "greedy (temperature 0)",
+  "termination": "exactly max_new_tokens tokens; end-of-sequence is ignored in every arm; a request that returns another number of tokens is invalid",
+  "request_boundary": "from issuing the request to its last token: session creation, prompt processing, drafting, verification and orchestration are inside; model start-up is outside and reported separately"
+ },
+ "order": {
+  "scheme": "counterbalanced AB/BA within prompt and repetition; prompts in seeded random order",
+  "seed": 20261126
+ },
+ "studies": {
+  "feasibility": {
+   "prompts": "development",
+   "repetitions": 2,
+   "max_new_tokens": 64,
+   "exploratory": true,
+   "_purpose": "is a larger experiment worth running? too small to support an acceleration claim"
+  },
+  "decision": {
+   "prompts": "heldout",
+   "repetitions": 3,
+   "max_new_tokens": 128,
+   "exploratory": false,
+   "requires_frozen": true
+  }
+ },
+ "arms": {
+  "A": {
+   "engine": "basp",
+   "label": "repaired BASP, ordinary decoding",
+   "method": "ordinary"
+  },
+  "B": {
+   "engine": "basp",
+   "label": "BASP, draft model proposing 2 tokens",
+   "method": "speculative",
+   "drafter": "model",
+   "k": 2,
+   "_selection": "selected by the bounded tuning on the development prompts (evidence/studies/tuning-qwen3-1.7b: k=2 1.128x [1.03-1.24], adaptive 1.04x [0.99-1.10], prompt lookup 0.90x [0.80-1.00], k=4 0.83x [0.74-0.94]; Qwen3-1.7B target, Qwen3-0.6B draft, PyTorch backend, this development container; a first run with an earlier version of the tool ranked them the same, evidence/studies/superseded/). The best of four candidates on six prompts overstates its own speed-up; only the held-out decision study judges it. Re-tune on the target machine before freezing there."
+  },
+  "C": {
+   "engine": "native",
+   "endpoint": null,
+   "revision": null,
+   "binary_sha256": null,
+   "command": null,
+   "request": {},
+   "model_name": null,
+   "label": "tuned native engine, ordinary decoding"
+  },
+  "D": {
+   "engine": "native",
+   "endpoint": null,
+   "revision": null,
+   "binary_sha256": null,
+   "command": null,
+   "request": {},
+   "model_name": null,
+   "label": "best eligible stock native configuration (its own speculative decoding, expert cache and placement tuned)"
+  },
+  "E": {
+   "engine": "native",
+   "endpoint": null,
+   "revision": null,
+   "binary_sha256": null,
+   "command": null,
+   "request": {},
+   "model_name": null,
+   "label": "that native engine plus one BASP-derived intervention"
+  }
+ },
+ "tuning": {
+  "_note": "bounded budget: these configurations and no others may be tried, on the development prompts only",
+  "B": [
+   {
+    "method": "speculative",
+    "drafter": "model",
+    "k": 2
+   },
+   {
+    "method": "speculative",
+    "drafter": "model",
+    "k": 4
+   },
+   {
+    "method": "speculative",
+    "drafter": "model",
+    "k": "adaptive",
+    "k_max": 8
+   },
+   {
+    "method": "speculative",
+    "drafter": "lookup",
+    "k": 4
+   }
+  ],
+  "native": "at most 12 configurations per native arm (placement, expert cache, CPU share, draft settings), on the development prompts only; record every one tried"
+ },
+ "comparisons": [
+  {
+   "name": "internal",
+   "baseline": "A",
+   "candidate": "B",
+   "min_speedup": 1.1,
+   "same_output_required": true,
+   "permits": "enabling the optimisation by default in the demonstrated regime of this runtime"
+  },
+  {
+   "name": "native-stock",
+   "baseline": "C",
+   "candidate": "D",
+   "min_speedup": 1.1,
+   "same_output_required": false,
+   "permits": "nothing for BASP: it establishes what the stock engine's own features achieve"
+  },
+  {
+   "name": "competitive",
+   "baseline": "D",
+   "candidate": "E",
+   "min_speedup": 1.2,
+   "same_output_required": false,
+   "permits": "further investment toward practical deployment"
+  }
+ ],
+ "criteria": {
+  "ci_level": 0.95,
+  "ci_lower_bound_above": 1.0,
+  "category_median_latency_worsening_max": 0.05,
+  "bootstrap_resamples": 10000,
+  "bootstrap_seed": 1,
+  "_inconclusive": "missing coverage, or an interval that includes no improvement, is inconclusive: preserve the result and design another study deliberately; do not add prompts until it turns favourable"
+ },
+ "prompts": {
+  "development": [
+   {
+    "id": "dev-code-short",
+    "category": "coding",
+    "context": "short",
+    "text": "def merge_sort(items):\n    \"\"\"Sort a list with merge sort.\"\"\"\n"
+   },
+   {
+    "id": "dev-code-long",
+    "category": "coding",
+    "context": "long",
+    "text": "def moving_average(values, window):\n    \"\"\"Yield the average of each run of `window` consecutive values.\"\"\"\n    if window <= 0:\n        raise ValueError(\"window must be positive\")\n    total = 0.0\n    buffer = []\n    for value in values:\n        buffer.append(value)\n        total += value\n        if len(buffer) > window:\n            total -= buffer.pop(0)\n        if len(buffer) == window:\n            yield total / window\n\n\ndef exponential_average(values, alpha):\n    \"\"\"Yield the exponentially weighted average of the values seen so far.\n\n    alpha is the weight of the newest value, between 0 and 1.\n    \"\"\"\n"
+   },
+   {
+    "id": "dev-tech-short",
+    "category": "technical",
+    "context": "short",
+    "text": "Explain step by step how photosynthesis turns light into chemical energy."
+   },
+   {
+    "id": "dev-tech-long",
+    "category": "technical",
+    "context": "long",
+    "text": "A language model produces text one token at a time. To produce a token it runs every layer of the network once: each layer reads what the earlier tokens left behind in a store called the key-value cache, mixes that with the current token's state, and passes the result on. The cache grows by one entry per layer for every token, which is why a long conversation uses more memory than a short one. Because the weights of a large model do not fit in the processor's own caches, generating a token means pulling most of them through main memory once.\n\nExplain why generating text is usually limited by memory speed rather than by arithmetic, and what that implies for hardware."
+   },
+   {
+    "id": "dev-prose-short",
+    "category": "prose",
+    "context": "short",
+    "text": "The printing press changed Europe because"
+   },
+   {
+    "id": "dev-prose-long",
+    "category": "prose",
+    "context": "long",
+    "text": "The clockmaker's shop had stood at the corner of the square for longer than anyone could remember, and for most of that time nothing in its window had changed: a row of pocket watches on faded velvet, a brass barometer, and a sign that said repairs were undertaken. So when the shutters stayed down for a week, and then a second week, people noticed. The baker said the old man had gone to visit a sister. The postman said there was no sister. On the fifteenth morning the shutters were up again, and in the window, where the barometer had been, stood something else.\n\nContinue the story."
+   }
+  ],
+  "heldout": [
+   {
+    "id": "code-s1",
+    "category": "coding",
+    "context": "short",
+    "text": "def fibonacci(n):\n    \"\"\"Return the n-th Fibonacci number, computed iteratively.\"\"\"\n"
+   },
+   {
+    "id": "code-s2",
+    "category": "coding",
+    "context": "short",
+    "text": "-- The five customers with the highest total order value in 2023.\nSELECT"
+   },
+   {
+    "id": "code-s3",
+    "category": "coding",
+    "context": "short",
+    "text": "// Returns a function that calls `fn` only after `wait` ms have passed without another call.\nfunction debounce(fn, wait) {"
+   },
+   {
+    "id": "code-s4",
+    "category": "coding",
+    "context": "short",
+    "text": "// Count the words in a file, reading it line by line.\nuse std::fs::File;\nuse std::io::{BufRead, BufReader};\n\nfn count_words(path: &str) -> std::io::Result<usize> {"
+   },
+   {
+    "id": "code-l1",
+    "category": "coding",
+    "context": "long",
+    "text": "class LRUCache:\n    \"\"\"A least-recently-used cache with a fixed capacity.\"\"\"\n\n    def __init__(self, capacity):\n        if capacity <= 0:\n            raise ValueError(\"capacity must be positive\")\n        self.capacity = capacity\n        self._items = {}\n        self._order = []\n\n    def get(self, key, default=None):\n        if key not in self._items:\n            return default\n        self._order.remove(key)\n        self._order.append(key)\n        return self._items[key]\n\n    def put(self, key, value):\n        if key in self._items:\n            self._order.remove(key)\n        elif len(self._items) >= self.capacity:\n            oldest = self._order.pop(0)\n            del self._items[oldest]\n        self._items[key] = value\n        self._order.append(key)\n\n    # Add a method `resize(self, capacity)` that changes the capacity and evicts the least\n    # recently used items if the cache is now too large.\n    def resize(self, capacity):\n"
+   },
+   {
+    "id": "code-l2",
+    "category": "coding",
+    "context": "long",
+    "text": "/* Returns the index of `target` in the sorted array `a` of length `n`, or -1. */\nint binary_search(const int *a, int n, int target) {\n    int lo = 0, hi = n;\n    while (lo < hi) {\n        int mid = (lo + hi) / 2;\n        if (a[mid] == target) return mid;\n        if (a[mid] < target) lo = mid;\n        else hi = mid;\n    }\n    return -1;\n}\n\n/* The function above can loop forever when the target is larger than a[mid] and\n   hi == lo + 1, and (lo + hi) can overflow for large arrays. Corrected version: */\nint binary_search_fixed(const int *a, int n, int target) {\n"
+   },
+   {
+    "id": "code-l3",
+    "category": "coding",
+    "context": "long",
+    "text": "import unittest\n\nfrom textutils import slugify\n\n\nclass SlugifyTests(unittest.TestCase):\n    def test_lowercases(self):\n        self.assertEqual(slugify(\"Hello World\"), \"hello-world\")\n\n    def test_strips_punctuation(self):\n        self.assertEqual(slugify(\"What's new?\"), \"whats-new\")\n\n    def test_collapses_whitespace(self):\n        self.assertEqual(slugify(\"a   b\\t c\"), \"a-b-c\")\n\n    # Further tests: leading and trailing separators, non-ASCII letters, an empty string,\n    # and a string that consists only of punctuation.\n    def test_trims_separators(self):\n"
+   },
+   {
+    "id": "code-l4",
+    "category": "coding",
+    "context": "long",
+    "text": "package config\n\nimport (\n\t\"bufio\"\n\t\"fmt\"\n\t\"os\"\n\t\"strings\"\n)\n\n// Settings holds key/value pairs read from a simple \"key = value\" file.\ntype Settings map[string]string\n\n// Load reads the file at path. Blank lines and lines starting with '#' are ignored.\nfunc Load(path string) (Settings, error) {\n\tf, err := os.Open(path)\n\tif err != nil {\n\t\treturn nil, fmt.Errorf(\"open %s: %w\", path, err)\n\t}\n\tdefer f.Close()\n\tsettings := Settings{}\n\tscanner := bufio.NewScanner(f)\n\tline := 0\n\tfor scanner.Scan() {\n\t\tline++\n\t\ttext := strings.TrimSpace(scanner.Text())\n"
+   },
+   {
+    "id": "tech-s1",
+    "category": "technical",
+    "context": "short",
+    "text": "Explain how a hash table handles two keys that hash to the same slot."
+   },
+   {
+    "id": "tech-s2",
+    "category": "technical",
+    "context": "short",
+    "text": "Explain what a page fault is and what the operating system does when one happens."
+   },
+   {
+    "id": "tech-s3",
+    "category": "technical",
+    "context": "short",
+    "text": "Explain how gradient descent finds a minimum of a function, and when it can fail."
+   },
+   {
+    "id": "tech-s4",
+    "category": "technical",
+    "context": "short",
+    "text": "Explain why floating-point addition is not associative, with a small example."
+   },
+   {
+    "id": "tech-l1",
+    "category": "technical",
+    "context": "long",
+    "text": "A cache keeps recently used data close to the processor so that it does not have to be fetched again from a slower place. Modern machines stack several of them: a small first-level cache that answers in about a nanosecond, larger second- and third-level caches that take several times longer, main memory at roughly a hundred nanoseconds, and storage that is thousands of times slower still. Each level holds a subset of the level below it, and a program that touches memory in a regular pattern lets the hardware guess what will be needed next and fetch it early. A program that jumps around unpredictably defeats that guessing, and then nearly every access waits for main memory.\n\nExplain, step by step, why traversing a large linked list is usually much slower than traversing an array of the same length."
+   },
+   {
+    "id": "tech-l2",
+    "category": "technical",
+    "context": "long",
+    "text": "When two programs talk over a network, the bytes one of them writes are cut into segments, wrapped in packets and sent across links that may drop, duplicate, delay or reorder them. The receiving side acknowledges what arrived, the sending side resends what was not acknowledged in time, and both sides limit how much is in flight so that neither the receiver nor the routers in between are overwhelmed. The sender does not know the capacity of the path in advance, so it probes: it increases its rate while packets get through and backs off sharply when they stop getting through.\n\nExplain what happens, step by step, when a single packet is lost in the middle of a large file transfer."
+   },
+   {
+    "id": "tech-l3",
+    "category": "technical",
+    "context": "long",
+    "text": "In a mixture-of-experts language model each layer contains many small feed-forward networks, called experts, and a router that chooses a few of them for every token. Only the chosen experts run, so the arithmetic per token is a fraction of what the full parameter count suggests. All the experts still have to be stored, however, and which ones are needed is not known until the router has run in that layer. On a machine whose fast memory cannot hold every expert, some of them live in slower memory and must be either executed there or moved before they can be used.\n\nExplain the trade-off between executing an expert where it is stored and moving it to faster memory first."
+   },
+   {
+    "id": "tech-l4",
+    "category": "technical",
+    "context": "long",
+    "text": "Quantisation stores each weight of a neural network in fewer bits than the 32 it was trained with. Groups of weights share a scale, and each weight keeps only a small integer that is multiplied by that scale when the model runs. Four or five bits per weight are common: the file shrinks to about a sixth, and because generating a token means reading most of the weights once, the time per token shrinks with it on hardware that is limited by memory speed. The price is a small loss of accuracy that grows quickly below four bits.\n\nExplain why going from eight bits to four bits per weight can nearly double the speed on some machines and make almost no difference on others."
+   },
+   {
+    "id": "prose-s1",
+    "category": "prose",
+    "context": "short",
+    "text": "The lighthouse keeper had not spoken to anyone in three weeks when"
+   },
+   {
+    "id": "prose-s2",
+    "category": "prose",
+    "context": "short",
+    "text": "Write a short letter to a friend who has just moved to a city where they know nobody."
+   },
+   {
+    "id": "prose-s3",
+    "category": "prose",
+    "context": "short",
+    "text": "The history of bread begins"
+   },
+   {
+    "id": "prose-s4",
+    "category": "prose",
+    "context": "short",
+    "text": "On the morning of the market, the old square"
+   },
+   {
+    "id": "prose-l1",
+    "category": "prose",
+    "context": "long",
+    "text": "The ferry left the island twice a week, on Tuesdays and Fridays, and Marta had missed both. She sat on the harbour wall with her suitcase between her feet and watched the last of the daylight go out of the water. Behind her the village was closing its shutters. The woman who ran the bakery had told her there was a room above the chandler's shop, if she did not mind the smell of tar, and a man called Ivo who sometimes took his boat across when the weather allowed and the price was right. The weather, at the moment, did not look as though it would allow anything.\n\nContinue the story."
+   },
+   {
+    "id": "prose-l2",
+    "category": "prose",
+    "context": "long",
+    "text": "By the time the survey team reached the upper valley the snow had closed the pass behind them. Dr Okafor counted the supplies twice and wrote the numbers in the back of her notebook: eleven days of food for six people, fuel for nine, and a radio that had not found a signal since the second ridge. The others were setting up the tents in the lee of a boulder the size of a house. Nobody had said anything about the tracks they had crossed that afternoon, which were too large for a fox and went in a straight line towards the glacier.\n\nContinue the story."
+   },
+   {
+    "id": "prose-l3",
+    "category": "prose",
+    "context": "long",
+    "text": "For most of history a city's size was limited by how far food could travel before it spoiled and how far a person could walk to work. Canals, then railways, then refrigerated ships stretched the first limit until a city could be fed from another continent. Trams and underground railways stretched the second, and the car stretched it further in every direction at once. Each change redrew the map of where people lived, and each left behind neighbourhoods built for the limits of an earlier age.\n\nContinue the essay."
+   },
+   {
+    "id": "prose-l4",
+    "category": "prose",
+    "context": "long",
+    "text": "The first public libraries lent books to anyone who could sign their name, and were attacked for it. Critics warned that novels would distract working people from their duties and that free reading would ruin the booksellers. Within a generation the libraries had become one of the few institutions that almost everyone agreed a town should have. They changed again when records, then films, then computers arrived, each time amid predictions that the new thing would make the building pointless.\n\nContinue the essay."
+   }
+  ]
+ },
+ "frozen": {},
+ "setup": {
+  "_note": "what this runtime's arms run on, pinned before a comparison that uses them is frozen: a decision study must run on exactly these files and this backend (checked by content hash)",
+  "target": null,
+  "target_sha256": null,
+  "draft": null,
+  "draft_sha256": null,
+  "backend": null,
+  "expert_cache_gib": null,
+  "embedding": "resident",
+  "machine": null
+ }
+}

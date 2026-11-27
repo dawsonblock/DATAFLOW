@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+      - name: Lint
+        if: matrix.python-version == '3.13'
+        run: ruff check .
+      - name: Regression tests
+        run: python -m pytest -q
+
+  report:
+    name: Quick report (smoke)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+      - name: Explore a handful of designs
+        run: python -m benchmarks.explore --budget 24 --workers 2 --out "$RUNNER_TEMP/report/dse.json"
+      - name: Generate the quick report
+        run: python -m benchmarks.run_report --quick --out "$RUNNER_TEMP/report"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: quick-report
+          path: ${{ runner.temp }}/report
+
+  verification:
+    name: Runtime parity with transformers (tiny models)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install (CPU-only PyTorch)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -e ".[dev,verify]"
+      - name: Runtime and verification tests (the transformers comparison is required, not skippable)
+        env:
+          BASP_REQUIRE_REFERENCE: "1"
+        run: python -m pytest -q tests/test_v04_runtime.py tests/test_v04_verification.py tests/test_v06_runtime_repairs.py
+
+  package:
+    name: Installable package (wheel and sdist, outside the checkout)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Build, install into clean environments, smoke-test
+        run: |
+          python -m pip install --upgrade pip build
+          python -m benchmarks.release_check

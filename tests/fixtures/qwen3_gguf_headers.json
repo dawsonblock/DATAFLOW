@@ -1,0 +1,124 @@
+{
+ "_note": "Facts read from the headers of the real Qwen3 Q4_K_M GGUF files on Hugging Face (Qwen/Qwen3-*-GGUF, fetched 2026-11-25; only the first 32 MB of each file, which holds the metadata and tensor index). Tests pin the simulator's model shapes to these files.",
+ "files": {
+  "qwen3-14b": {
+   "architecture": "qwen3",
+   "bits_per_weight": 4.873,
+   "data_bytes": 8995793920,
+   "file": "Qwen3-14B-Q4_K_M.gguf",
+   "file_type": "Q4_K_M",
+   "header_sha256": "cb1bb78a1e3a8925189bdab1d4d0021e60c3ceffb10a46378de36b47efb5ffc2",
+   "metadata": {
+    "qwen3.attention.head_count": 40,
+    "qwen3.attention.head_count_kv": 8,
+    "qwen3.attention.key_length": 128,
+    "qwen3.attention.layer_norm_rms_epsilon": 9.999999974752427e-07,
+    "qwen3.attention.value_length": 128,
+    "qwen3.block_count": 40,
+    "qwen3.context_length": 40960,
+    "qwen3.embedding_length": 5120,
+    "qwen3.feed_forward_length": 17408,
+    "qwen3.rope.freq_base": 1000000.0
+   },
+   "parameters": 14768307200,
+   "repository": "Qwen/Qwen3-14B-GGUF",
+   "size": 9001752960,
+   "tensors": 443,
+   "types": {
+    "F32": 424960,
+    "Q4_K": 12102533120,
+    "Q6_K": 2665349120
+   }
+  },
+  "qwen3-30b-a3b": {
+   "architecture": "qwen3moe",
+   "bits_per_weight": 4.8606,
+   "data_bytes": 18550716416,
+   "file": "Qwen3-30B-A3B-Q4_K_M.gguf",
+   "file_type": "Q4_K_M",
+   "header_sha256": "7c4bdbe51db5d1b79540f3b6b4071e91315e8350c2e69c1dab42f64dd6159e4a",
+   "metadata": {
+    "qwen3moe.attention.head_count": 32,
+    "qwen3moe.attention.head_count_kv": 4,
+    "qwen3moe.attention.key_length": 128,
+    "qwen3moe.attention.layer_norm_rms_epsilon": 9.999999974752427e-07,
+    "qwen3moe.attention.value_length": 128,
+    "qwen3moe.block_count": 48,
+    "qwen3moe.context_length": 40960,
+    "qwen3moe.embedding_length": 2048,
+    "qwen3moe.expert_count": 128,
+    "qwen3moe.expert_feed_forward_length": 768,
+    "qwen3moe.expert_used_count": 8,
+    "qwen3moe.feed_forward_length": 6144,
+    "qwen3moe.rope.freq_base": 1000000.0
+   },
+   "parameters": 30532122624,
+   "repository": "Qwen/Qwen3-30B-A3B-GGUF",
+   "size": 18556685824,
+   "tensors": 579,
+   "types": {
+    "F32": 12793856,
+    "Q4_K": 25351159808,
+    "Q6_K": 5168168960
+   }
+  },
+  "qwen3-4b": {
+   "architecture": "qwen3",
+   "bits_per_weight": 4.9548,
+   "data_bytes": 2491323904,
+   "file": "Qwen3-4B-Q4_K_M.gguf",
+   "file_type": "Q4_K_M",
+   "header_sha256": "010db535323935faf825f305d0b633592f97d90f56f719cfe19838c60534940c",
+   "metadata": {
+    "qwen3.attention.head_count": 32,
+    "qwen3.attention.head_count_kv": 8,
+    "qwen3.attention.key_length": 128,
+    "qwen3.attention.layer_norm_rms_epsilon": 9.999999974752427e-07,
+    "qwen3.attention.value_length": 128,
+    "qwen3.block_count": 36,
+    "qwen3.context_length": 40960,
+    "qwen3.embedding_length": 2560,
+    "qwen3.feed_forward_length": 9728,
+    "qwen3.rope.freq_base": 1000000.0
+   },
+   "parameters": 4022468096,
+   "repository": "Qwen/Qwen3-4B-GGUF",
+   "size": 2497280256,
+   "tensors": 398,
+   "types": {
+    "F32": 196096,
+    "Q4_K": 3137863680,
+    "Q6_K": 884408320
+   }
+  },
+  "qwen3-8b": {
+   "architecture": "qwen3",
+   "bits_per_weight": 4.9049,
+   "data_bytes": 5021827072,
+   "file": "Qwen3-8B-Q4_K_M.gguf",
+   "file_type": "Q4_K_M",
+   "header_sha256": "4cb90edb0fddb280feb0bccedc8805a5052a55bd28a0411f012a20142432dc0b",
+   "metadata": {
+    "qwen3.attention.head_count": 32,
+    "qwen3.attention.head_count_kv": 8,
+    "qwen3.attention.key_length": 128,
+    "qwen3.attention.layer_norm_rms_epsilon": 9.999999974752427e-07,
+    "qwen3.attention.value_length": 128,
+    "qwen3.block_count": 36,
+    "qwen3.context_length": 40960,
+    "qwen3.embedding_length": 4096,
+    "qwen3.feed_forward_length": 12288,
+    "qwen3.rope.freq_base": 1000000.0
+   },
+   "parameters": 8190735360,
+   "repository": "Qwen/Qwen3-8B-GGUF",
+   "size": 5027783488,
+   "tensors": 399,
+   "types": {
+    "F32": 308224,
+    "Q4_K": 6586630144,
+    "Q6_K": 1603796992
+   }
+  }
+ }
+}

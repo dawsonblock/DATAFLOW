@@ -1,0 +1,55 @@
+[
+ {
+  "candidate": {
+   "method": "speculative",
+   "drafter": "model",
+   "k": 2
+  },
+  "speedup": 1.1284233006727966,
+  "ci": [
+   1.03078177655494,
+   1.2353139863968294
+  ],
+  "verdict": "meets_criterion"
+ },
+ {
+  "candidate": {
+   "method": "speculative",
+   "drafter": "model",
+   "k": "adaptive",
+   "k_max": 8
+  },
+  "speedup": 1.0429080345672088,
+  "ci": [
+   0.9859000474144756,
+   1.1032124112553001
+  ],
+  "verdict": "inconclusive"
+ },
+ {
+  "candidate": {
+   "method": "speculative",
+   "drafter": "lookup",
+   "k": 4
+  },
+  "speedup": 0.8954080171923599,
+  "ci": [
+   0.803158961399486,
+   0.998252594798062
+  ],
+  "verdict": "slower"
+ },
+ {
+  "candidate": {
+   "method": "speculative",
+   "drafter": "model",
+   "k": 4
+  },
+  "speedup": 0.8308658343212416,
+  "ci": [
+   0.7367314731713969,
+   0.9370280214453784
+  ],
+  "verdict": "slower"
+ }
+]

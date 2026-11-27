@@ -1,0 +1,40 @@
+[
+ {
+  "baseline": "transformers",
+  "bindings": {
+   "benchmark": "e37e10080d3e3f5e3497054f824075df56be8a058f2beb4317336a006ed6bae3",
+   "machine": "Linux x86_64 Intel(R) Xeon(R) Processor @ 2.10GHz (4 logical CPUs)",
+   "model": "qwen3-0.6b",
+   "runtime": "786cb74409d195369ecbed7fc0ceac00a4ad25d9a9ff4c3003a064baffd7d2fb",
+   "weights": "9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031"
+  },
+  "candidate": "runtime:torch-cpu",
+  "level": "E3",
+  "metric": "model_quality",
+  "note": "perplexity relative to the reference on the same weights",
+  "raw": {},
+  "receipt_id": "a9c8fcadb9b052ee",
+  "regime": "qwen3-0.6b, float32 CPU execution, parity with the transformers reference",
+  "repetitions": 1,
+  "value": 1.0000000028048017
+ },
+ {
+  "baseline": "transformers",
+  "bindings": {
+   "benchmark": "e37e10080d3e3f5e3497054f824075df56be8a058f2beb4317336a006ed6bae3",
+   "machine": "Linux x86_64 Intel(R) Xeon(R) Processor @ 2.10GHz (4 logical CPUs)",
+   "model": "qwen3-0.6b",
+   "runtime": "786cb74409d195369ecbed7fc0ceac00a4ad25d9a9ff4c3003a064baffd7d2fb",
+   "weights": "9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031"
+  },
+  "candidate": "runtime:torch-cpu",
+  "level": "E3",
+  "metric": "numerical_error",
+  "note": "max relative L2 of logits, prompt and decode",
+  "raw": {},
+  "receipt_id": "5808f89a068f70a9",
+  "regime": "qwen3-0.6b, float32 CPU execution, parity with the transformers reference",
+  "repetitions": 1,
+  "value": 1.7545194048887764e-06
+ }
+]

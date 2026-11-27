@@ -1,0 +1,55 @@
+[
+ {
+  "candidate": {
+   "method": "speculative",
+   "drafter": "model",
+   "k": 2
+  },
+  "speedup": 1.077822940993879,
+  "ci": [
+   0.9916041167784622,
+   1.1715383916586088
+  ],
+  "verdict": "inconclusive"
+ },
+ {
+  "candidate": {
+   "method": "speculative",
+   "drafter": "model",
+   "k": "adaptive",
+   "k_max": 8
+  },
+  "speedup": 0.9835705174550954,
+  "ci": [
+   0.915749412521478,
+   1.0564145055175718
+  ],
+  "verdict": "inconclusive"
+ },
+ {
+  "candidate": {
+   "method": "speculative",
+   "drafter": "lookup",
+   "k": 4
+  },
+  "speedup": 0.926719833662512,
+  "ci": [
+   0.8338767948919603,
+   1.0298999269007647
+  ],
+  "verdict": "inconclusive"
+ },
+ {
+  "candidate": {
+   "method": "speculative",
+   "drafter": "model",
+   "k": 4
+  },
+  "speedup": 0.8642535489188244,
+  "ci": [
+   0.7713060598764181,
+   0.968401826038369
+  ],
+  "verdict": "slower"
+ }
+]

@@ -1,0 +1,254 @@
+{
+ "analysis": {
+  "baseline": "A",
+  "candidate": "B",
+  "categories": {
+   "coding": {
+    "median_latency_change": -0.1726124013300736,
+    "median_latency_s": {
+     "A": 11.728995474249814,
+     "B": 9.704425400249988
+    },
+    "prompts": 2,
+    "speedup": 1.2100709808907435
+   },
+   "prose": {
+    "median_latency_change": 0.1146295979212908,
+    "median_latency_s": {
+     "A": 11.201185603750218,
+     "B": 12.485173005749857
+    },
+    "prompts": 2,
+    "speedup": 0.8962372507158358
+   },
+   "technical": {
+    "median_latency_change": -0.03192995099358753,
+    "median_latency_s": {
+     "A": 11.475478143499913,
+     "B": 11.109066688749976
+    },
+    "prompts": 2,
+    "speedup": 1.045933812702581
+   }
+  },
+  "ci_high": 1.1032124112553001,
+  "ci_level": 0.95,
+  "ci_low": 0.9859000474144756,
+  "ci_method": "percentile bootstrap over prompts, stratified by category",
+  "failures": [],
+  "order_balance": {
+   "baseline_first": 6,
+   "candidate_first": 6
+  },
+  "per_prompt_speedup": {
+   "dev-code-long": 1.1859426621998566,
+   "dev-code-short": 1.2346901966388029,
+   "dev-prose-long": 0.9319460002378116,
+   "dev-prose-short": 0.861896729387444,
+   "dev-tech-long": 0.9188245354579315,
+   "dev-tech-short": 1.190627261612395
+  },
+  "prompts_missing": [],
+  "prompts_planned": 6,
+  "prompts_with_valid_pairs": 6,
+  "resamples": 10000,
+  "speedup": 1.0429080345672088,
+  "time_saved_fraction": 0.041142682906853856,
+  "valid_pairs": 12
+ },
+ "arms": {
+  "A": {
+   "engine": "basp",
+   "label": "repaired BASP, ordinary decoding",
+   "method": "ordinary"
+  },
+  "B": {
+   "drafter": "model",
+   "engine": "basp",
+   "k": "adaptive",
+   "k_max": 8,
+   "label": "tuning candidate",
+   "method": "speculative"
+  }
+ },
+ "comparison": "internal",
+ "decision": {
+  "category_guard": {
+   "coding": -0.1726124013300736,
+   "prose": 0.1146295979212908,
+   "technical": -0.03192995099358753
+  },
+  "exploratory": true,
+  "min_speedup": 1.1,
+  "reasons": [
+   "the 95% interval 0.986-1.103 includes no improvement",
+   "exploratory study: too small to support an acceleration claim; it only says whether a decision study is worth running"
+  ],
+  "supports_decision": false,
+  "verdict": "inconclusive"
+ },
+ "harness_validation_only": false,
+ "identity": {
+  "backend": "torch-cpu",
+  "machine": "Linux x86_64 Intel(R) Xeon(R) Processor @ 2.10GHz (4 logical CPUs)",
+  "models": {
+   "draft": {
+    "name": "Qwen3-0.6B-Q8_0.gguf",
+    "sha256": "9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031",
+    "size": 639446688
+   },
+   "target": {
+    "name": "Qwen3-1.7B-Q8_0.gguf",
+    "sha256": "061b54daade076b5d3362dac252678d17da8c68f07560be70818cace6590cb1a",
+    "size": 1834426016
+   }
+  },
+  "parameters": {
+   "arms": {
+    "A": {
+     "engine": "basp",
+     "label": "repaired BASP, ordinary decoding",
+     "method": "ordinary"
+    },
+    "B": {
+     "drafter": "model",
+     "engine": "basp",
+     "k": "adaptive",
+     "k_max": 8,
+     "label": "tuning candidate",
+     "method": "speculative"
+    }
+   },
+   "comparison": "internal",
+   "embedding": "resident",
+   "expert_cache_gib": null,
+   "max_new_tokens": 64,
+   "protocol": "a6dbd2f3d7dccc88080e81b3d01ce771094d55112e9996f497f3b3d6c6c9bf7a",
+   "study": "feasibility"
+  },
+  "runtime": "786cb74409d195369ecbed7fc0ceac00a4ad25d9a9ff4c3003a064baffd7d2fb",
+  "software": {
+   "basp": "0.6.0",
+   "numpy": "2.5.3",
+   "platform": "Linux-6.18.44-fc-v880-x86_64-with-glibc2.39",
+   "python": "3.13.18",
+   "torch": "2.15.0+cpu"
+  },
+  "tool": {
+   "name": "benchmarks.run_study",
+   "sha256": "7e09c245d2e6b43156841651f548db323df56a2165c3896b02bf3840bb6602b2"
+  }
+ },
+ "max_new_tokens": 64,
+ "per_arm": {
+  "A": {
+   "expert_ceiling_bytes": null,
+   "failed": 0,
+   "io_source": [
+    "/proc/self/io read_bytes",
+    "getrusage ru_majflt"
+   ],
+   "peak_expert_resident_bytes": 0,
+   "per_returned_token": {
+    "draft_rows": 0.0,
+    "expert_cache_misses": 0.0,
+    "expert_decoded_stored_bytes": 0.0,
+    "expert_logical_requests": 0.0,
+    "expert_logical_stored_bytes": 0.0,
+    "target_calls": 1.0,
+    "target_rows": 2.125
+   },
+   "process_peak_rss_bytes": 13492187136,
+   "requests": 12,
+   "returned_tokens": 768,
+   "seconds": 137.62263688599978,
+   "storage_read_bytes": 0,
+   "tokens_per_s": 5.580477291945624
+  },
+  "B": {
+   "acceptance": 0.7291666666666666,
+   "expert_ceiling_bytes": null,
+   "failed": 0,
+   "io_source": [
+    "/proc/self/io read_bytes",
+    "getrusage ru_majflt"
+   ],
+   "peak_expert_resident_bytes": 0,
+   "per_returned_token": {
+    "draft_rows": 1.7278645833333333,
+    "expert_cache_misses": 0.0,
+    "expert_decoded_stored_bytes": 0.0,
+    "expert_logical_requests": 0.0,
+    "expert_logical_stored_bytes": 0.0,
+    "target_calls": 0.6354166666666666,
+    "target_rows": 2.2604166666666665
+   },
+   "process_peak_rss_bytes": 13492187136,
+   "requests": 12,
+   "returned_tokens": 768,
+   "seconds": 133.1946603789993,
+   "storage_read_bytes": 0,
+   "tokens_per_s": 5.765996908695073
+  }
+ },
+ "projection": {
+  "decision": {
+   "generated_tokens_per_arm": 9216,
+   "seconds": 3249.807567179989
+  },
+  "feasibility": {
+   "generated_tokens_per_arm": 768,
+   "seconds": 270.81729726499907
+  }
+ },
+ "prompts": [
+  {
+   "category": "coding",
+   "context": "short",
+   "id": "dev-code-short"
+  },
+  {
+   "category": "coding",
+   "context": "long",
+   "id": "dev-code-long"
+  },
+  {
+   "category": "technical",
+   "context": "short",
+   "id": "dev-tech-short"
+  },
+  {
+   "category": "technical",
+   "context": "long",
+   "id": "dev-tech-long"
+  },
+  {
+   "category": "prose",
+   "context": "short",
+   "id": "dev-prose-short"
+  },
+  {
+   "category": "prose",
+   "context": "long",
+   "id": "dev-prose-long"
+  }
+ ],
+ "protocol": {
+  "comparison_fingerprint": "a6dbd2f3d7dccc88080e81b3d01ce771094d55112e9996f497f3b3d6c6c9bf7a",
+  "frozen": false,
+  "name": "basp-request-latency",
+  "version": 1
+ },
+ "reduced": false,
+ "regime": {
+  "concurrency": 1,
+  "expert_cache": "cleared",
+  "model": "warm: models loaded before the study; one unmeasured warm-up request per arm",
+  "request_boundary": "from issuing the request to its last token: session creation, prompt processing, drafting, verification and orchestration are inside; model start-up is outside and reported separately",
+  "request_context": "fresh session per request; no prefix or prompt cache in any arm",
+  "sampling": "greedy (temperature 0)",
+  "termination": "exactly max_new_tokens tokens; end-of-sequence is ignored in every arm; a request that returns another number of tokens is invalid"
+ },
+ "startup_seconds": 2.429705937000108,
+ "study": "feasibility"
+}

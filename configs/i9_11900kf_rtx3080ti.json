@@ -1,0 +1,75 @@
+{
+ "name": "i9_11900kf_rtx3080ti",
+ "_note": "UNCALIBRATED PRIOR built from public specifications and assumptions, not from measurements on this machine. Run `python -m benchmarks.profile_hardware --template <this profile>` and `python -m benchmarks.run_llama_bench` on the machine to replace it.",
+ "host": "host",
+ "sync_latency_s": 2e-06,
+ "devices": [
+  {
+   "name": "host",
+   "kind": "CPU",
+   "mem_capacity": 68719476736,
+   "mem_bandwidth": 36000000000.0,
+   "compute_rate": 400000000000.0,
+   "kernel_startup_s": 5e-07,
+   "warm_startup_s": 5e-08,
+   "decode_rate": {
+    "INT4": "inf",
+    "INT8": "inf",
+    "ENTROPY": 4000000000.0
+   },
+   "stream_formats": [
+    "INT4",
+    "INT8"
+   ],
+   "expanded_format": "INT4",
+   "stream_ingest": false,
+   "power": {
+    "idle_w": 45.0,
+    "joules_per_mac": 2.5e-10,
+    "joules_per_mem_byte": 1.5e-10
+   },
+   "_comment": "Intel i9-11900KF (8 cores, AVX-512 with VNNI). Assumed: dual-channel DDR4-3200 at 0.7 of its 51.2 GB/s theoretical bandwidth, 64 GiB installed (set to the installed amount), 400 GMAC/s. The arithmetic rate is the sustained rate of llama.cpp's quantised matrix-matrix kernels (prompt processing); token generation stays limited by memory bandwidth at this rate, as llama.cpp on desktop CPUs is commonly reported to be. Energy per operation is set so that full arithmetic load draws roughly the package power. v0.2 used 60 GMAC/s, which made prompt processing several times too slow. An assumption until calibrated."
+  },
+  {
+   "name": "gpu",
+   "kind": "GPU",
+   "mem_capacity": 12884901888,
+   "mem_bandwidth": 500000000000.0,
+   "compute_rate": 17000000000000.0,
+   "kernel_startup_s": 3e-06,
+   "warm_startup_s": 2e-07,
+   "decode_rate": {
+    "INT4": "inf",
+    "INT8": "inf",
+    "ENTROPY": 40000000000.0
+   },
+   "stream_formats": [
+    "INT4",
+    "INT8"
+   ],
+   "expanded_format": "INT4",
+   "stream_ingest": true,
+   "power": {
+    "idle_w": 30.0,
+    "joules_per_mac": 2e-11,
+    "joules_per_mem_byte": 3e-11,
+    "sleep_w": 8.0,
+    "gate_after_s": 0.05,
+    "wake_j": 0.5
+   },
+   "_comment": "NVIDIA RTX 3080 Ti, 12 GB. Assumed: 500 GB/s effective memory bandwidth for quantised kernels, 17 TMAC/s, 3 us kernel launch."
+  }
+ ],
+ "links": [
+  {
+   "name": "pcie-gpu",
+   "a": "host",
+   "b": "gpu",
+   "bandwidth_ab": 24000000000.0,
+   "bandwidth_ba": 24000000000.0,
+   "latency_s": 5e-06,
+   "dma_queue_depth": 8,
+   "joules_per_byte": 6e-11
+  }
+ ]
+}

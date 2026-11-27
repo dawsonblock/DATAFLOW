@@ -1,0 +1,221 @@
+{
+  "_note": "PRE-REGISTERED CALIBRATION PLAN, fixed before any result exists. Every benchmark's split is decided here: the calibration split may tune the simulator, the validation split only judges it. Never move a benchmark between splits after seeing a result, and never edit this file to make validation pass; to test a model fix, add new benchmarks to the validation split of a new plan version. Each llama-bench run yields a prompt-processing and a generation measurement.",
+  "version": 2,
+  "defaults": {
+    "repetitions": 3,
+    "n_prompt": 512,
+    "n_gen": 128
+  },
+  "models": {
+    "qwen3-4b": {
+      "file": "Qwen3-4B-Q4_K_M.gguf",
+      "repository": "Qwen/Qwen3-4B-GGUF"
+    },
+    "qwen3-8b": {
+      "file": "Qwen3-8B-Q4_K_M.gguf",
+      "repository": "Qwen/Qwen3-8B-GGUF"
+    },
+    "qwen3-14b": {
+      "file": "Qwen3-14B-Q4_K_M.gguf",
+      "repository": "Qwen/Qwen3-14B-GGUF"
+    },
+    "qwen3-30b-a3b": {
+      "file": "Qwen3-30B-A3B-Q4_K_M.gguf",
+      "repository": "Qwen/Qwen3-30B-A3B-GGUF"
+    }
+  },
+  "machines": {
+    "i9-11900kf-3080ti": {
+      "profile": "i9_11900kf_rtx3080ti",
+      "_why": "Calibration: two dense models fully on the CPU and fully on the GPU -- they pin down CPU and GPU bandwidth (generation) and arithmetic rate (prompt processing). Validation: everything the fit never sees -- partial layer offload, a larger dense model, deep context, and the mixture-of-experts model with layers or experts split between CPU and GPU.",
+      "runs": [
+        {
+          "split": "calibration",
+          "model": "qwen3-4b",
+          "ngl": [
+            0,
+            99
+          ]
+        },
+        {
+          "split": "calibration",
+          "model": "qwen3-8b",
+          "ngl": [
+            0,
+            99
+          ]
+        },
+        {
+          "split": "validation",
+          "model": "qwen3-8b",
+          "ngl": [
+            12,
+            24
+          ]
+        },
+        {
+          "split": "validation",
+          "model": "qwen3-8b",
+          "ngl": [
+            0,
+            99
+          ],
+          "depth": [
+            4096
+          ]
+        },
+        {
+          "split": "validation",
+          "model": "qwen3-14b",
+          "ngl": [
+            0,
+            20,
+            99
+          ]
+        },
+        {
+          "split": "validation",
+          "model": "qwen3-30b-a3b",
+          "ngl": [
+            0,
+            12,
+            24
+          ]
+        },
+        {
+          "split": "validation",
+          "model": "qwen3-30b-a3b",
+          "ngl": [
+            99
+          ],
+          "n_cpu_moe": [
+            24,
+            32,
+            40,
+            48
+          ]
+        }
+      ]
+    },
+    "macbook-m2": {
+      "profile": "macbook_m2",
+      "_why": "Unified memory, 16 GB: the 30B model does not fit. Calibration as on the desktop; validation on partial offload, deep context and the 14B model (whose full offload may exceed macOS's GPU working-set limit -- a failure is recorded, not hidden).",
+      "runs": [
+        {
+          "split": "calibration",
+          "model": "qwen3-4b",
+          "ngl": [
+            0,
+            99
+          ]
+        },
+        {
+          "split": "calibration",
+          "model": "qwen3-8b",
+          "ngl": [
+            0,
+            99
+          ]
+        },
+        {
+          "split": "validation",
+          "model": "qwen3-8b",
+          "ngl": [
+            12,
+            24
+          ]
+        },
+        {
+          "split": "validation",
+          "model": "qwen3-8b",
+          "ngl": [
+            99
+          ],
+          "depth": [
+            4096
+          ]
+        },
+        {
+          "split": "validation",
+          "model": "qwen3-4b",
+          "ngl": [
+            99
+          ],
+          "depth": [
+            4096
+          ]
+        },
+        {
+          "split": "validation",
+          "model": "qwen3-14b",
+          "ngl": [
+            0,
+            20,
+            99
+          ]
+        }
+      ]
+    },
+    "colab-t4": {
+      "profile": "colab_t4",
+      "_why": "Colab's T4 runtime, for testing the tooling on real hardware and the simulator's model of a discrete GPU. Two vCPUs make CPU-only runs slow, so the 14B model is validated only with GPU offload.",
+      "runs": [
+        {
+          "split": "calibration",
+          "model": "qwen3-4b",
+          "ngl": [
+            0,
+            99
+          ]
+        },
+        {
+          "split": "calibration",
+          "model": "qwen3-8b",
+          "ngl": [
+            0,
+            99
+          ]
+        },
+        {
+          "split": "validation",
+          "model": "qwen3-8b",
+          "ngl": [
+            12,
+            24
+          ]
+        },
+        {
+          "split": "validation",
+          "model": "qwen3-8b",
+          "ngl": [
+            99
+          ],
+          "depth": [
+            4096
+          ]
+        },
+        {
+          "split": "validation",
+          "model": "qwen3-4b",
+          "ngl": [
+            99
+          ],
+          "depth": [
+            4096
+          ]
+        },
+        {
+          "split": "validation",
+          "model": "qwen3-14b",
+          "ngl": [
+            20,
+            99
+          ]
+        }
+      ]
+    }
+  },
+  "_changes": [
+    "v2 (before any measurement existed): added the colab-t4 machine; the i9 and M2 sections are unchanged."
+  ]
+}

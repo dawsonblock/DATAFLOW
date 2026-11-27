@@ -1,0 +1,300 @@
+{
+ "backend": [
+  "numpy-cpu"
+ ],
+ "config": {
+  "architecture": "qwen3",
+  "context_length": 40960,
+  "eps": 9.999999974752427e-07,
+  "expert_ffn": 0,
+  "ffn": 3072,
+  "head_dim": 128,
+  "hidden": 1024,
+  "n_experts": 0,
+  "n_head": 16,
+  "n_kv_head": 8,
+  "n_layers": 28,
+  "normalize_topk": true,
+  "rope_theta": 1000000.0,
+  "tied_embeddings": true,
+  "top_k": 0,
+  "vocab": 151936
+ },
+ "file": {
+  "name": "Qwen3-0.6B-Q8_0.gguf",
+  "sha256": "9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031",
+  "size": 639446688
+ },
+ "generated_text": {
+  "reference": " Paris. The capital of France is also the capital of the Republic of France.",
+  "runtime": " Paris. The capital of France is also the capital of the Republic of France."
+ },
+ "generation": {
+  "decode_logits": {
+   "argmax_agreement": 1.0,
+   "finite": true,
+   "max_abs": 4.363059997558594e-05,
+   "rel_l2_max": 2.2104452339194773e-06,
+   "rel_l2_mean": 1.424398454319076e-06,
+   "rows": 16,
+   "top_overlap": 1.0
+  },
+  "first_divergence": null,
+  "identical": true,
+  "reference": [
+   12095,
+   13,
+   576,
+   6722,
+   315,
+   9625,
+   374,
+   1083,
+   279,
+   6722,
+   315,
+   279,
+   5429,
+   315,
+   9625,
+   13
+  ],
+  "runtime": [
+   12095,
+   13,
+   576,
+   6722,
+   315,
+   9625,
+   374,
+   1083,
+   279,
+   6722,
+   315,
+   279,
+   5429,
+   315,
+   9625,
+   13
+  ],
+  "tokens": 16
+ },
+ "hidden": {
+  "layers_compared": 27,
+  "rel_l2_max": 2.376620907814016e-06,
+  "rel_l2_per_layer": [
+   1.0821613068960986e-06,
+   1.2208805282558308e-06,
+   1.5573626188854745e-06,
+   1.8060477216905253e-06,
+   1.655971352620315e-06,
+   1.6066052149617257e-06,
+   1.6831535799162763e-06,
+   1.687910519565052e-06,
+   1.79140614678779e-06,
+   2.0233396180396743e-06,
+   2.376620907814016e-06,
+   2.2348472915237263e-06,
+   2.0154481293551527e-06,
+   1.9864197367992274e-06,
+   1.9878716299881617e-06,
+   1.946757670329576e-06,
+   1.9037789308295723e-06,
+   1.7454067462600234e-06,
+   1.742123318923575e-06,
+   1.6540596062382864e-06,
+   1.587693236114732e-06,
+   1.4609166009136935e-06,
+   1.4591977560388363e-06,
+   1.393770767573386e-06,
+   1.258421253790251e-06,
+   1.17714140453098e-06,
+   1.1546274205324581e-06
+  ],
+  "shapes_match": true
+ },
+ "identity": {
+  "backend": "numpy-cpu",
+  "machine": "Linux x86_64 Intel(R) Xeon(R) Processor @ 2.10GHz (4 logical CPUs)",
+  "models": {
+   "model": {
+    "name": "Qwen3-0.6B-Q8_0.gguf",
+    "sha256": "9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031",
+    "size": 639446688
+   }
+  },
+  "parameters": {
+   "generated": 16,
+   "perplexity_tokens": 61,
+   "prompt_tokens": 5
+  },
+  "runtime": "786cb74409d195369ecbed7fc0ceac00a4ad25d9a9ff4c3003a064baffd7d2fb",
+  "software": {
+   "basp": "0.6.0",
+   "numpy": "2.5.3",
+   "platform": "Linux-6.18.44-fc-v880-x86_64-with-glibc2.39",
+   "python": "3.13.18",
+   "torch": "2.15.0+cpu"
+  },
+  "tool": {
+   "name": "basp.verification.parity_report",
+   "sha256": "0d4496327524d6fa7acb1a2046f1a0bad3528f4b7c2b745070a7ba6172863bf7"
+  }
+ },
+ "model": "qwen3-0.6b",
+ "numerical_error": 2.7508459357729636e-06,
+ "perplexity": {
+  "logits": {
+   "argmax_agreement": 1.0,
+   "finite": true,
+   "max_abs": 5.53131103515625e-05,
+   "rel_l2_max": 2.8531976446499534e-06,
+   "rel_l2_mean": 1.4016820754715203e-06,
+   "rows": 61,
+   "top_overlap": 1.0
+  },
+  "reference": 15.30177409992422,
+  "relative": 1.0000010296805477,
+  "runtime": 15.301789855863356,
+  "tokens": 61
+ },
+ "prefill_logits": {
+  "argmax_agreement": 1.0,
+  "finite": true,
+  "max_abs": 4.100799560546875e-05,
+  "rel_l2_max": 2.7508459357729636e-06,
+  "rel_l2_mean": 1.975946101347521e-06,
+  "rows": 5,
+  "top_overlap": 1.0
+ },
+ "prompt_text": "The capital of France is",
+ "prompt_tokens": 5,
+ "reasons": [],
+ "receipts": [
+  {
+   "baseline": "transformers",
+   "bindings": {
+    "benchmark": "e37e10080d3e3f5e3497054f824075df56be8a058f2beb4317336a006ed6bae3",
+    "machine": "Linux x86_64 Intel(R) Xeon(R) Processor @ 2.10GHz (4 logical CPUs)",
+    "model": "qwen3-0.6b",
+    "runtime": "786cb74409d195369ecbed7fc0ceac00a4ad25d9a9ff4c3003a064baffd7d2fb",
+    "weights": "9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031"
+   },
+   "candidate": "runtime:numpy-cpu",
+   "level": "E3",
+   "metric": "numerical_error",
+   "note": "max relative L2 of logits, prompt and decode",
+   "raw": {},
+   "receipt_id": "6f6dfe10b3f684f1",
+   "regime": "qwen3-0.6b, float32 CPU execution, parity with the transformers reference",
+   "repetitions": 1,
+   "value": 2.7508459357729636e-06
+  },
+  {
+   "baseline": "transformers",
+   "bindings": {
+    "benchmark": "e37e10080d3e3f5e3497054f824075df56be8a058f2beb4317336a006ed6bae3",
+    "machine": "Linux x86_64 Intel(R) Xeon(R) Processor @ 2.10GHz (4 logical CPUs)",
+    "model": "qwen3-0.6b",
+    "runtime": "786cb74409d195369ecbed7fc0ceac00a4ad25d9a9ff4c3003a064baffd7d2fb",
+    "weights": "9465e63a22add5354d9bb4b99e90117043c7124007664907259bd16d043bb031"
+   },
+   "candidate": "runtime:numpy-cpu",
+   "level": "E3",
+   "metric": "model_quality",
+   "note": "perplexity relative to the reference on the same weights",
+   "raw": {},
+   "receipt_id": "7aeffaec87fe7bb6",
+   "regime": "qwen3-0.6b, float32 CPU execution, parity with the transformers reference",
+   "repetitions": 1,
+   "value": 1.0000010296805477
+  }
+ ],
+ "routing": null,
+ "runtime_fingerprint": "786cb74409d195369ecbed7fc0ceac00a4ad25d9a9ff4c3003a064baffd7d2fb",
+ "seconds": 41.40608513899997,
+ "shapes_match": true,
+ "telemetry": {
+  "decode": {
+   "seconds": 0.8834685279985024,
+   "tokens": 15,
+   "tokens_per_s": 16.978533501337612
+  },
+  "experts": {
+   "cache_hits": 0,
+   "cache_misses": 0,
+   "decoded_float32_bytes": 0,
+   "decoded_stored_bytes": 0,
+   "failed_acquisitions": 0,
+   "loads": 0,
+   "logical_requests": 0,
+   "logical_stored_bytes": 0,
+   "peak_load_workspace_bytes": 0,
+   "token_expert_pairs": 0
+  },
+  "forward": {
+   "calls": 18,
+   "rows": 86
+  },
+  "ops": [
+   {
+    "backend": "numpy-cpu",
+    "count": 1008,
+    "op": "add",
+    "seconds": 0.006984592002936552
+   },
+   {
+    "backend": "numpy-cpu",
+    "count": 504,
+    "op": "attention",
+    "seconds": 0.1349567960010063
+   },
+   {
+    "backend": "numpy-cpu",
+    "count": 18,
+    "op": "embedding",
+    "seconds": 0.0004557730007945793
+   },
+   {
+    "backend": "numpy-cpu",
+    "count": 1008,
+    "op": "head_rms_norm",
+    "seconds": 0.043142995000380324
+   },
+   {
+    "backend": "numpy-cpu",
+    "count": 2034,
+    "op": "matmul",
+    "seconds": 0.6967631940078718
+   },
+   {
+    "backend": "numpy-cpu",
+    "count": 1026,
+    "op": "rms_norm",
+    "seconds": 0.045053435993395397
+   },
+   {
+    "backend": "numpy-cpu",
+    "count": 1008,
+    "op": "rope",
+    "seconds": 0.053650985005333496
+   },
+   {
+    "backend": "numpy-cpu",
+    "count": 504,
+    "op": "swiglu",
+    "seconds": 0.6131230139981199
+   }
+  ],
+  "prefill": {
+   "seconds": 0.760731830000168,
+   "tokens": 71,
+   "tokens_per_s": 93.33118084461422
+  }
+ },
+ "thresholds": {
+  "rel_l2_max": 0.002,
+  "relative_perplexity_max": 1.01
+ },
+ "verdict": "pass"
+}

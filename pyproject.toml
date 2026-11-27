@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "basp-dataflow"
+version = "0.6.0"
+description = "BASP adaptive dataflow engine: evidence-gated simulator, scheduler, memory domains and a verified GGUF runtime"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = ["numpy>=1.24"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7", "ruff==0.16.9", "gguf>=0.10"]  # gguf: reference reader, cross-checks our header reader
+verify = ["torch>=2.1", "transformers>=4.51"]  # the reference for runtime parity (tests/test_v04_verification.py)
+
+[project.scripts]
+basp-verify-runtime = "benchmarks.verify_runtime:main"
+basp-run-study = "benchmarks.run_study:main"
+basp-speculative-bench = "benchmarks.speculative_bench:main"
+basp-calibrate = "benchmarks.run_calibration:main"
+basp-explore = "benchmarks.explore:main"
+basp-report = "benchmarks.run_report:main"
+basp-release-check = "benchmarks.release_check:main"
+
+[tool.setuptools.packages.find]
+include = ["basp*", "benchmarks*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
